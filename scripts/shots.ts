@@ -4,11 +4,10 @@
  *   bun run db:seed && bun run shots
  *
  * Yerel sunucuyu kendisi başlatır, yönetici ve sakin oturumlarıyla gezinip
- * `src/assets/shots/` altına webp yazar. Playwright ve sharp yalnızca bu
- * betik için gereklidir; arayüz değiştikçe yeniden çalıştırın.
+ * `src/assets/shots/` altına webp yazar. Playwright yalnızca bu betik için
+ * gereklidir; arayüz değiştikçe yeniden çalıştırın.
  */
 import { chromium, type Page } from "playwright";
-import sharp from "sharp";
 
 const BASE = process.env.SHOTS_BASE_URL ?? "http://localhost:3000";
 const OUT = "src/assets/shots";
@@ -116,11 +115,12 @@ for (const shot of shots) {
   }
   await page.waitForTimeout(400);
 
+  // Görüntü 2x alınıp yarıya indiriliyor: metin kenarları böyle daha temiz.
   const png = await page.screenshot({ type: "png" });
-  await sharp(png)
-    .resize({ width: WIDTH })
+  await new Bun.Image(png)
+    .resize(WIDTH)
     .webp({ quality: 82 })
-    .toFile(`${OUT}/${shot.file}.webp`);
+    .write(`${OUT}/${shot.file}.webp`);
   console.log(`✓ ${shot.file}.webp`);
 }
 
