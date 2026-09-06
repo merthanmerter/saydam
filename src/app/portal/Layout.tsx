@@ -1,11 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { CreditCard, Eye, LogOut, Menu, Settings2, ShieldCheck } from "lucide-react";
 import { Suspense, useState } from "react";
-import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { RouteErrorBoundary } from "@/app/components/error-boundary";
 import { Logo } from "@/app/components/logo";
-import { RouteSkeleton, ShellSkeleton } from "@/app/components/route-skeleton";
+import { RouteSkeleton } from "@/app/components/route-skeleton";
 import { navFor } from "@/app/portal/nav";
+import { portalRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -24,42 +25,36 @@ import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export default function PortalLayout() {
-  const { me, loading, isAdmin, canAdmin, setView } = useSession();
+  // Oturum yönlendiricinin `beforeLoad` korumasında doğrulandı ve bağlamla
+  // buraya geldi: "yükleniyor" ya da "oturum yok" hâli tip düzeyinde yok.
+  const { me } = portalRoute.useRouteContext();
+  const { isAdmin, canAdmin, setView } = useSession();
   const location = useLocation();
   const client = useQueryClient();
   const [mobileOpen, setMobileOpen] = useState(false);
   const unread = useApi<{ unread: number }>("/messages", Boolean(me)).data?.unread ?? 0;
-
-  // Oturum bilgisi gelmeden kenar çubuğu çizilemez (menü role göre değişir),
-  // o yüzden ilk açılışta kabuğun kendisi de iskelet.
-  if (loading) return <ShellSkeleton pathname={location.pathname} />;
-  if (!me) return <Navigate to="/giris" replace state={{ from: location.pathname }} />;
 
   const items = navFor(isAdmin);
 
   const nav = (
     <nav className="grid gap-0.5">
       {items.map(({ to, label, icon: Icon, badge, end }) => (
-        <NavLink
+        <Link
           key={to}
           to={to}
-          end={end ?? false}
+          activeOptions={{ exact: end ?? false }}
           onClick={() => setMobileOpen(false)}
-          className={({ isActive }) =>
-            cn(
-              "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors",
-              isActive
-                ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
-            )
-          }
+          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-muted-foreground text-sm transition-colors hover:bg-sidebar-accent/60 hover:text-foreground"
+          activeProps={{
+            className: "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+          }}
         >
           <Icon className="size-4 shrink-0" />
           <span className="flex-1">{label}</span>
           {badge === "messages" && unread > 0 && (
             <Badge className="h-5 min-w-5 px-1.5 text-[11px]">{unread}</Badge>
           )}
-        </NavLink>
+        </Link>
       ))}
     </nav>
   );
@@ -232,7 +227,7 @@ function UserMenu({ compact }: { compact?: boolean }) {
             {isAdmin ? "Sakin olarak görüntüle" : "Yönetim görünümüne dön"}
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={() => navigate("/panel/ayarlar")}>
+        <DropdownMenuItem onClick={() => navigate({ to: "/panel/ayarlar", search: {} })}>
           <Settings2 className="size-4" /> Ayarlar
         </DropdownMenuItem>
         <DropdownMenuSeparator />

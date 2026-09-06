@@ -1,3 +1,4 @@
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   CalendarCheck,
   Scale,
@@ -6,12 +7,12 @@ import {
   Undo2,
   Wallet,
 } from "lucide-react";
-import { Suspense, useState, useTransition } from "react";
-import { Link } from "react-router";
+import { Suspense, useTransition } from "react";
 import { Money, PageHeader, Stat } from "@/app/components/bits";
 import { ConfirmDialog } from "@/app/components/confirm";
 import { Pager } from "@/app/components/pager";
 import { TableSkeleton } from "@/app/components/skeletons";
+import { reportsRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -245,8 +246,13 @@ function YearEndSkeleton() {
 /** Yıl sonu mahsuplaşma. */
 function YearEndTab() {
   const { isAdmin } = useSession();
-  const [year, setYear] = useState(new Date().getFullYear());
+  // Yıl adres çubuğunda: geri tuşu çalışır ve rotanın loader'ı hangi yılın
+  // verisini ısıtacağını buradan bilir.
+  const { yil: year } = reportsRoute.useSearch();
+  const navigate = useNavigate();
   const [, startTransition] = useTransition();
+  const setYear = (yil: number) =>
+    startTransition(() => void navigate({ to: "/panel/raporlar", search: { yil } }));
   const yearEnd = useSuspenseApi<YearEnd>(`/reports/year-end/${year}`);
   const balances = usePaged<Balance, { debtVisibility: string }>("/reports/balances");
   const ownOnly = !isAdmin && balances.debtVisibility !== "herkes";
@@ -264,10 +270,7 @@ function YearEndTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Select
-          value={String(year)}
-          onValueChange={(y) => startTransition(() => setYear(Number(y)))}
-        >
+        <Select value={String(year)} onValueChange={(y) => setYear(Number(y))}>
           <SelectTrigger className="w-[110px]" aria-label="Yıl">
             <SelectValue />
           </SelectTrigger>

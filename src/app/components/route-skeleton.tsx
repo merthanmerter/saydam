@@ -1,3 +1,4 @@
+import { useRouterState } from "@tanstack/react-router";
 import {
   CardSkeleton,
   HeaderSkeleton,
@@ -108,7 +109,8 @@ export function RouteSkeleton({ pathname }: { pathname: string }) {
       return (
         <>
           <HeaderSkeleton width={584} actions={{ width: 114, count: 1 }} />
-          <StatsSkeleton hints={[false, true]} />
+          {/* İkinci kartın ipucu dar sütunda iki satıra sarıyor. */}
+          <StatsSkeleton hints={[false, 2]} />
           <div className="mt-6">
             <TableSkeleton cols={6} rows={6} />
           </div>
@@ -243,12 +245,11 @@ export function ShellSkeleton({ pathname }: { pathname: string }) {
           <div className="mt-5 flex-1 overflow-y-auto">
             <div className="grid gap-0.5">
               {navFor(lastKnownAdmin()).map((item) => {
-                const active = item.end
-                  ? pathname === item.to
-                  : pathname.startsWith(item.to);
+                const to = String(item.to);
+                const active = item.end ? pathname === to : pathname.startsWith(to);
                 return (
                   <div
-                    key={item.to}
+                    key={to}
                     className={cn(
                       "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm",
                       active && "bg-sidebar-accent",
@@ -347,3 +348,18 @@ export function AppSkeleton({ pathname }: { pathname: string }) {
     </div>
   );
 }
+
+/**
+ * Yönlendiricinin bekleme göstergeleri.
+ *
+ * Yönlendirici varsayılan olarak bir saniye bekleyip gösterge çizer; burada
+ * eşik sıfıra çekildiği için gidilen sayfanın iskeleti anında görünür.
+ * `location` gezinme başlar başlamaz hedefi gösterir (`resolvedLocation` ise
+ * hâlâ bir öncekini), yani iskelet doğru sayfanın iskeletidir.
+ */
+const usePendingPathname = () =>
+  useRouterState({ select: (state) => state.location.pathname });
+
+export const PendingRoute = () => <RouteSkeleton pathname={usePendingPathname()} />;
+
+export const PendingApp = () => <AppSkeleton pathname={usePendingPathname()} />;

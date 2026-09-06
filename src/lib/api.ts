@@ -111,17 +111,28 @@ export function useAction<TInput, TResult>(
  */
 export type Paged<T> = { items: T[]; page: number; size: number; hasMore: boolean };
 
+export const PAGE_SIZE = 25;
+
+/**
+ * Sayfalı bir listenin sorgu yolu.
+ *
+ * Hem `usePaged` hem de yönlendiricinin loader'ı bunu kullanır: iki taraf
+ * birebir aynı dizeyi üretmezse loader'ın doldurduğu önbellek ıskalanır ve
+ * aynı veri iki kez istenir.
+ */
+export const pagedPath = (path: string, page = 1, size = PAGE_SIZE) =>
+  `${path}${path.includes("?") ? "&" : "?"}page=${page}&size=${size}`;
+
 /**
  * Sayfalı liste. Sayfa numarasını tutar ve yolu ona göre kurar; veri
  * `useSuspenseApi` üzerinden geldiği için yükleme durumu yine iskeletle
  * karşılanır. Sayfa değiştiğinde sorgu anahtarı da değiştiğinden önceki
  * sayfa önbellekte kalır, geri dönmek anında olur.
  */
-export function usePaged<T, Extra = unknown>(path: string, size = 25) {
+export function usePaged<T, Extra = unknown>(path: string, size = PAGE_SIZE) {
   const [page, setPage] = useState(1);
   const [pending, startTransition] = useTransition();
-  const query = `${path.includes("?") ? "&" : "?"}page=${page}&size=${size}`;
-  const { data } = useSuspenseApi<Paged<T> & Extra>(`${path}${query}`);
+  const { data } = useSuspenseApi<Paged<T> & Extra>(pagedPath(path, page, size));
   return {
     // Zarfın yanındaki alanlar (ör. `debtVisibility`) olduğu gibi geçer.
     ...data,

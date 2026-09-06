@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useState } from "react";
 import { Field } from "@/app/components/bits";
 import { type SiteOption, SitePicker } from "@/app/components/site-picker";
 import AuthShell from "@/app/pages/AuthShell";
+import { loginRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,14 +11,22 @@ import { post, useAction } from "@/lib/api";
 
 export default function Login() {
   const navigate = useNavigate();
+  // Koruma, gidilmek istenen yolu buraya taşıdı: giriş yapınca kullanıcı
+  // panele değil, tıkladığı sayfaya döner.
+  const { from } = loginRoute.useSearch();
   const { me, refetch } = useSession();
   const [site, setSite] = useState<SiteOption | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const go = useCallback(
+    (replace = false) => navigate({ to: from ?? "/panel", replace }),
+    [navigate, from],
+  );
+
   useEffect(() => {
-    if (me) navigate("/panel", { replace: true });
-  }, [me, navigate]);
+    if (me) go(true);
+  }, [me, go]);
 
   const login = useAction(
     (input: { siteId: string; email: string; password: string }) =>
@@ -26,7 +35,7 @@ export default function Login() {
       invalidate: ["/"],
       onDone: () => {
         refetch();
-        navigate("/panel");
+        go();
       },
     },
   );

@@ -27,7 +27,13 @@
     "db:check": "bun run scripts/check-migration.ts"
   },
   "dependencies": {
+    "@tanstack/react-charts": "^0.16.0",
+    "@tanstack/react-db": "^0.3.7",
+    "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-router": "^1.170.32",
+    "@tanstack/react-store": "^0.11.1",
+    "@tanstack/react-table": "^9.2.4",
     "@vercel/blob": "^2.8.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -36,7 +42,6 @@
     "radix-ui": "^1.6.7",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router": "^8.3.1",
     "recharts": "3.10.1",
     "resend": "^6.26.0",
     "sonner": "^2.0.8",

@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   Calculator,
@@ -16,7 +17,6 @@ import {
   ShieldCheck,
   Wallet,
 } from "lucide-react";
-import { Link } from "react-router";
 import { Logo, Wordmark } from "@/app/components/logo";
 import { useSession } from "@/app/session";
 import shotAidatlar from "@/assets/shots/aidatlar.webp";

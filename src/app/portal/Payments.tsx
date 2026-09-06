@@ -1,6 +1,6 @@
+import { useNavigate } from "@tanstack/react-router";
 import { Banknote, CalendarClock, CreditCard, Landmark, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import {
   AmountInput,
@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/app/components/confirm";
 import { FileUpload, type UploadedFile } from "@/app/components/inputs";
 import { Pager } from "@/app/components/pager";
 import { RowActions } from "@/app/components/row-actions";
+import { paymentsRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,19 +74,19 @@ export default function Payments() {
   const payments = usePaged<Payment>("/payments");
   const balances = useSuspenseApi<Paged<Balance>>("/reports/balances?size=500");
   const site = useSuspenseApi<{ site: Site; onlinePayment: OnlinePayment }>("/site");
-  const [params, setParams] = useSearchParams();
+  // Ödeme sağlayıcısı sonucu adres üzerinden döndürür.
+  const { odeme } = paymentsRoute.useSearch();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const result = params.get("odeme");
-    if (!result) return;
-    if (result === "basarili") toast.success("Ödemeniz alındı, teşekkürler");
-    else if (result === "alindi")
-      // PayTR sonucu ayrı bir bildirimle gelir; kayıt birkaç saniye içinde güncellenir.
+    if (!odeme) return;
+    if (odeme === "basarili") toast.success("Ödemeniz alındı, teşekkürler");
+    // PayTR sonucu ayrı bir bildirimle gelir; kayıt birkaç saniye içinde işlenir.
+    else if (odeme === "alindi")
       toast.success("Ödemeniz alındı, kaydınıza birkaç saniye içinde işlenecek");
     else toast.error("Ödeme tamamlanamadı");
-    params.delete("odeme");
-    setParams(params, { replace: true });
-  }, [params, setParams]);
+    navigate({ to: "/panel/odemeler", search: {}, replace: true });
+  }, [odeme, navigate]);
 
   const myUnits = (balances.data.items ?? []).filter(
     (b) => b.ownerId === me?.membershipId || b.tenantId === me?.membershipId,

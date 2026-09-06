@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { CalendarSync, FileText, Layers, Plus, Receipt } from "lucide-react";
 import { useState, useTransition } from "react";
 import {
@@ -11,6 +12,7 @@ import {
 import { FileUpload, PeriodPicker, type UploadedFile } from "@/app/components/inputs";
 import { Pager } from "@/app/components/pager";
 import { RowActions } from "@/app/components/row-actions";
+import { expensesRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,8 +62,13 @@ const KIND_LABEL: Record<Expense["kind"], string> = {
 
 export default function Expenses() {
   const { isAdmin } = useSession();
-  const [year, setYear] = useState(new Date().getFullYear());
+  // Yıl adres çubuğunda: geri tuşu çalışır ve rotanın loader'ı hangi yılın
+  // verisini ısıtacağını buradan bilir.
+  const { yil: year } = expensesRoute.useSearch();
+  const navigate = useNavigate();
   const [, startTransition] = useTransition();
+  const setYear = (yil: number) =>
+    startTransition(() => void navigate({ to: "/panel/giderler", search: { yil } }));
   const expenses = usePaged<Expense>(`/expenses?year=${year}`);
   const recurring = useSuspenseApi<{ recurring: Recurring[] }>("/recurring");
 
@@ -86,10 +93,7 @@ export default function Expenses() {
 
         <TabsContent value="actual" className="mt-4">
           <div className="mb-3 flex items-center gap-2">
-            <Select
-              value={String(year)}
-              onValueChange={(y) => startTransition(() => setYear(Number(y)))}
-            >
+            <Select value={String(year)} onValueChange={(y) => setYear(Number(y))}>
               <SelectTrigger className="w-[110px]" aria-label="Yıl">
                 <SelectValue />
               </SelectTrigger>

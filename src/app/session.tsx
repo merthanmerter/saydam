@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, type ReactNode, use, useCallback, useEffect } from "react";
 import { rememberRole } from "@/app/portal/nav";
 import { api } from "@/lib/api";
@@ -26,6 +26,19 @@ type Me = {
   };
 };
 
+/**
+ * Oturum sorgusu.
+ *
+ * Hem `SessionProvider` hem de yönlendiricinin `beforeLoad` koruması aynı
+ * seçenekleri kullanır: koruma veriyi bir kez çeker, bileşen aynı önbellekten
+ * okur. Panel açılırken oturum için ikinci bir istek gitmez.
+ */
+export const meQuery = queryOptions({
+  queryKey: ["/auth/me"],
+  queryFn: () => api<{ me: Me | null; saasMode: boolean }>("/auth/me"),
+  staleTime: 60_000,
+});
+
 type Session = {
   me: Me | null;
   saasMode: boolean;
@@ -50,11 +63,7 @@ const SessionContext = createContext<Session>({
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const client = useQueryClient();
-  const { data, isPending, refetch } = useQuery({
-    queryKey: ["/auth/me"],
-    queryFn: () => api<{ me: Me | null; saasMode: boolean }>("/auth/me"),
-    staleTime: 60_000,
-  });
+  const { data, isPending, refetch } = useQuery(meQuery);
 
   /** Mod değişince kapsamı daralan/genişleyen tüm sorgular yeniden çekilir. */
   const setView = useCallback(

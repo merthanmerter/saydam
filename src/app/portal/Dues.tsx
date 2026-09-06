@@ -1,8 +1,10 @@
+import { useNavigate } from "@tanstack/react-router";
 import { Banknote, Calculator, CircleAlert } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { EmptyState, Money, PageHeader, Stat } from "@/app/components/bits";
 import { PeriodPicker } from "@/app/components/inputs";
 import { Pager } from "@/app/components/pager";
+import { duesRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { post, useAction, usePaged, useSuspenseApi } from "@/lib/api";
-import { currentPeriod, date, dateTime, money, periodLabel } from "@/lib/format";
+import { date, dateTime, money, periodLabel } from "@/lib/format";
 import {
   type Budget,
   type Due,
@@ -36,8 +38,13 @@ const SOURCE_LABEL = {
 
 export default function Dues() {
   const { isAdmin } = useSession();
-  const [period, setPeriod] = useState(currentPeriod());
+  // Dönem adres çubuğunda: geri tuşu çalışır, bağlantı paylaşılabilir ve
+  // rotanın loader'ı hangi dönemin verisini ısıtacağını buradan bilir.
+  const { donem: period } = duesRoute.useSearch();
+  const navigate = useNavigate();
   const [, startTransition] = useTransition();
+  const setPeriod = (donem: number) =>
+    startTransition(() => void navigate({ to: "/panel/aidatlar", search: { donem } }));
   const budget = useSuspenseApi<Budget>(`/budget/${period}`);
   const dues = usePaged<Due>(`/dues?period=${period}`);
   const site = useSuspenseApi<{ summary: UnitsSummary; site: Site }>("/site");
@@ -57,10 +64,7 @@ export default function Dues() {
         description="Her gider kalemi kendi yöntemine göre dağıtılır: kapıcı gibi kalemler eşit, bakım-onarım ve sigorta arsa payı oranında (KMK m.20)."
         actions={
           <>
-            <PeriodPicker
-              value={period}
-              onChange={(next) => startTransition(() => setPeriod(next))}
-            />
+            <PeriodPicker value={period} onChange={setPeriod} />
             {isAdmin && (
               <Button
                 disabled={run.isPending || !budget.data?.totalCents || unitCount === 0}

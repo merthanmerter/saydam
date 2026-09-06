@@ -1,8 +1,9 @@
+import { useNavigate } from "@tanstack/react-router";
 import { CreditCard, KeyRound, Landmark, Repeat, Scale, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Field, Money, PageHeader } from "@/app/components/bits";
+import { settingsRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -703,20 +704,17 @@ function SubscriptionCard({ subscription }: { subscription: Subscription }) {
   const state = me?.subscription;
   const [plan, setPlan] = useState<"monthly" | "yearly">(subscription?.plan ?? "monthly");
   const [billToSite, setBillToSite] = useState(subscription?.billToSite ?? true);
-  const [params, setParams] = useSearchParams();
+  // Ödeme sağlayıcısı kullanıcıyı sonuçla birlikte buraya döndürür; sonucu
+  // bildirip adresi temizliyoruz ki sayfa yenilenince tekrar görünmesin.
+  const { abonelik } = settingsRoute.useSearch();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const result = params.get("abonelik");
-    if (result === "basarili" || result === "alindi") {
-      toast.success("Ödemeniz alındı, aboneliğiniz kısa süre içinde etkinleşecek");
-      params.delete("abonelik");
-      setParams(params, { replace: true });
-    } else if (result === "hata") {
-      toast.error("Ödeme tamamlanamadı");
-      params.delete("abonelik");
-      setParams(params, { replace: true });
-    }
-  }, [params, setParams]);
+    if (!abonelik) return;
+    if (abonelik === "hata") toast.error("Ödeme tamamlanamadı");
+    else toast.success("Ödemeniz alındı, aboneliğiniz kısa süre içinde etkinleşecek");
+    navigate({ to: "/panel/ayarlar", search: {}, replace: true });
+  }, [abonelik, navigate]);
 
   const subscribe = useAction<undefined, { paymentPageUrl?: string; status?: string }>(
     () => post("/billing/subscribe", { plan, billToSite }),

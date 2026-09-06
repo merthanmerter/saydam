@@ -101,17 +101,27 @@ export function StatsSkeleton({
   hints,
   className = "sm:grid-cols-2 lg:grid-cols-4",
 }: {
-  hints: boolean[];
+  /** Karttaki ipucu satır sayısı: yok (0/false), bir satır (1/true), iki satır (2). */
+  hints: (boolean | number)[];
   className?: string;
 }) {
   return (
     <div className={cn("grid gap-3", className)}>
-      {keys(hints.length).map((k, i) => (
-        <Card key={k} className="gap-0 py-4">
+      {hints.map((hint, i) => (
+        <Card key={keys(hints.length)[i]} className="gap-0 py-4">
           <CardContent className="px-4">
             <Line box="h-4" bar="h-3" width="w-24" />
             <Line box="h-8" bar="h-6" width="w-32" className="mt-2" />
-            {hints[i] && <Line box="h-4" bar="h-3" width="w-20" className="mt-1" />}
+            {/* Sarmalanan ipucu tek bir paragraf: üst boşluk yalnızca ilk satırda. */}
+            {keys(Number(hint)).map((line, index) => (
+              <Line
+                key={line}
+                box="h-4"
+                bar="h-3"
+                width={index === Number(hint) - 1 ? "w-20" : "w-full"}
+                className={index === 0 ? "mt-1" : undefined}
+              />
+            ))}
           </CardContent>
         </Card>
       ))}

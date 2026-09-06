@@ -1,5 +1,5 @@
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
 import { Field } from "@/app/components/bits";
 import AuthShell from "@/app/pages/AuthShell";
 import { useSession } from "@/app/session";
@@ -26,7 +26,7 @@ export default function Register() {
     success: "Siteniz oluşturuldu",
     onDone: () => {
       refetch();
-      navigate("/panel");
+      navigate({ to: "/panel" });
     },
   });
 

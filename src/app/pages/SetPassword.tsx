@@ -1,7 +1,8 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
 import { Field } from "@/app/components/bits";
 import AuthShell from "@/app/pages/AuthShell";
+import { setPasswordRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { post, useAction, useApi } from "@/lib/api";
 
 export default function SetPassword() {
-  const { token = "" } = useParams();
+  const { token } = setPasswordRoute.useParams();
   const navigate = useNavigate();
   const { refetch } = useSession();
   const [password, setPassword] = useState("");
@@ -23,7 +24,7 @@ export default function SetPassword() {
     success: "Şifreniz belirlendi",
     onDone: () => {
       refetch();
-      navigate("/panel");
+      navigate({ to: "/panel" });
     },
   });
 
@@ -49,7 +50,7 @@ export default function SetPassword() {
         title="Bağlantı geçersiz"
         description="Davet bağlantısının süresi dolmuş ya da daha önce kullanılmış. Site yönetiminden yeni bir bağlantı isteyin."
       >
-        <Button className="w-full" onClick={() => navigate("/giris")}>
+        <Button className="w-full" onClick={() => navigate({ to: "/giris", search: {} })}>
           Giriş sayfasına dön
         </Button>
       </AuthShell>

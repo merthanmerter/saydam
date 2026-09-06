@@ -1,3 +1,4 @@
+import type { LinkProps } from "@tanstack/react-router";
 import {
   Banknote,
   ChartNoAxesCombined,
@@ -13,7 +14,8 @@ import {
 } from "lucide-react";
 
 export type NavItem = {
-  to: string;
+  /** Yönlendiricinin tanıdığı yollar; yanlış yazılan bir bağlantı derlenmez. */
+  to: LinkProps["to"];
   label: string;
   icon: typeof LayoutDashboard;
   end?: boolean;

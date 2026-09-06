@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ArrowRight,
@@ -8,7 +9,6 @@ import {
   Wallet,
 } from "lucide-react";
 import { lazy, Suspense } from "react";
-import { Link } from "react-router";
 import { Money, PageHeader, Stat } from "@/app/components/bits";
 import type { MonthlyPoint } from "@/app/portal/TreasuryChart";
 import { useSession } from "@/app/session";
