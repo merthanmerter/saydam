@@ -1,5 +1,4 @@
 import type { SubscriptionState } from "../lib/types.ts";
-import { toCents } from "./db.ts";
 import { env, PLAN_PRICES } from "./env.ts";
 
 /** Yeni sitelere tanınan ücretsiz deneme süresi: 1 ay. */
@@ -71,4 +70,4 @@ export function subscriptionState(row: SubscriptionRow | null): SubscriptionStat
 export const trialEnd = () =>
   new Date(Date.now() + TRIAL_DAYS * 86_400_000).toISOString().slice(0, 10);
 
-export const planPrice = (plan: "monthly" | "yearly") => toCents(PLAN_PRICES[plan]);
+export const planPrice = (plan: "monthly" | "yearly") => PLAN_PRICES[plan];

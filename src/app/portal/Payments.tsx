@@ -1,4 +1,4 @@
-import { useStore } from "@tanstack/react-form";
+import { useSelector } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Banknote,
@@ -675,7 +675,7 @@ function RestructureDialog({ balances }: { balances: Balance[] }) {
   });
 
   /* Önizleme, kullanıcı yazdıkça sunucudan gelir; form değerlerine abone. */
-  const draft = useStore(form.store, (state) => state.values);
+  const draft = useSelector(form.store, (state) => state.values);
   const query = new URLSearchParams({
     unitId,
     installments: draft.installments,

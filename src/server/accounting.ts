@@ -1,9 +1,9 @@
 import { type Period, periodLabel, periodParts, yearRange } from "../lib/period.ts";
 import type { BudgetLine } from "../lib/types.ts";
-import { type Row, sql, toCents } from "./db.ts";
+import { type Row, sql } from "./db.ts";
 import { env } from "./env.ts";
 import { badRequest, conflict, type Page } from "./http.ts";
-import { computeLateFee } from "./lateFee.ts";
+import { computeLateFee, type DueRow } from "./lateFee.ts";
 import {
   distribute,
   type Payer,
@@ -22,12 +22,12 @@ import { activeByUnit } from "./restructuring.ts";
 export async function unitsSummary(siteId: string) {
   const [row] = await sql`
     select count(*)::int                  as "unitCount",
-           coalesce(sum(arsa_payi), 0)    as "totalArsaPayi"
+           (coalesce(sum(arsa_payi), 0))::float8    as "totalArsaPayi"
       from units where site_id = ${siteId}
   `;
   return {
-    unitCount: toCents(row?.unitCount),
-    totalArsaPayi: toCents(row?.totalArsaPayi),
+    unitCount: row?.unitCount,
+    totalArsaPayi: row?.totalArsaPayi,
   };
 }
 
@@ -44,15 +44,12 @@ export async function unitsSummary(siteId: string) {
 export async function syncSubscriptionExpense(siteId: string, period: Period) {
   if (!env.saasMode) return;
   const [sub] = await sql`
-    select plan, status, bill_to_site as "billToSite", price_cents as "priceCents"
+    select plan, status, bill_to_site as "billToSite", price_cents::float8 as "priceCents"
       from subscriptions where site_id = ${siteId}
   `;
   if (!sub?.billToSite || sub.status !== "active") return;
 
-  const monthly =
-    sub.plan === "yearly"
-      ? Math.round(toCents(sub.priceCents) / 12)
-      : toCents(sub.priceCents);
+  const monthly = sub.plan === "yearly" ? Math.round(sub.priceCents / 12) : sub.priceCents;
   if (monthly <= 0) return;
 
   await sql.begin(async (tx) => {
@@ -82,7 +79,7 @@ export type { BudgetLine } from "../lib/types.ts";
 /** Bir dönemde aidata yansıyacak kalemler. */
 export async function periodBudget(siteId: string, period: Period) {
   const recurring = (await sql`
-    select id, title, category, amount_cents as "amountCents",
+    select id, title, category, amount_cents::float8 as "amountCents",
            share_method as "shareMethod", payer
       from recurring_expenses
      where site_id = ${siteId}
@@ -92,7 +89,7 @@ export async function periodBudget(siteId: string, period: Period) {
   `) as Row[];
 
   const allocations = (await sql`
-    select a.id, a.amount_cents as "amountCents", e.title, e.category, e.kind,
+    select a.id, a.amount_cents::float8 as "amountCents", e.title, e.category, e.kind,
            e.share_method as "shareMethod", e.payer,
            e.installments, e.period as "startPeriod"
       from expense_allocations a
@@ -107,7 +104,7 @@ export async function periodBudget(siteId: string, period: Period) {
       id: r.id,
       title: r.title,
       category: r.category,
-      amountCents: toCents(r.amountCents),
+      amountCents: r.amountCents,
       shareMethod: r.shareMethod as ShareMethod,
       payer: r.payer as Payer,
     })),
@@ -116,7 +113,7 @@ export async function periodBudget(siteId: string, period: Period) {
       id: a.id,
       title: a.title,
       category: a.category,
-      amountCents: toCents(a.amountCents),
+      amountCents: a.amountCents,
       shareMethod: a.shareMethod as ShareMethod,
       payer: a.payer as Payer,
       detail:
@@ -149,14 +146,14 @@ export async function runDues(siteId: string, period: Period, createdBy: string)
   if (budget.totalCents <= 0) throw badRequest("Bu dönemde dağıtılacak gider yok");
 
   const units = (await sql`
-    select id, arsa_payi as "arsaPayi",
+    select id, arsa_payi::float8 as "arsaPayi",
            owner_membership_id  as "ownerId",
            tenant_membership_id as "tenantId",
            coalesce(owner_membership_id, tenant_membership_id) as "membershipId"
       from units where site_id = ${siteId} order by block, no
   `) as Row[];
 
-  const shares: ShareUnit[] = units.map((u) => ({ arsaPayi: toCents(u.arsaPayi) }));
+  const shares: ShareUnit[] = units.map((u) => ({ arsaPayi: u.arsaPayi }));
 
   /**
    * Her kalem KENDİ yöntemiyle bölünür, sonra daire başına toplanır. Tümünü
@@ -200,7 +197,7 @@ export async function runDues(siteId: string, period: Period, createdBy: string)
 
   const [site] = await sql`select due_day as "dueDay" from sites where id = ${siteId}`;
   const { year, month } = periodParts(period);
-  const dueDate = new Date(Date.UTC(year, month - 1, toCents(site?.dueDay) || 10))
+  const dueDate = new Date(Date.UTC(year, month - 1, site?.dueDay || 10))
     .toISOString()
     .slice(0, 10);
 
@@ -237,33 +234,33 @@ export async function treasury(siteId: string) {
   const [row] = await sql`
     select
       (select coalesce(sum(amount_cents),0) from payments
-        where site_id = ${siteId} and status = 'confirmed')            as "collected",
+        where site_id = ${siteId} and status = 'confirmed')::float8 as "collected",
       (select coalesce(sum(amount_cents),0) from payments
-        where site_id = ${siteId} and status = 'pending')              as "pending",
+        where site_id = ${siteId} and status = 'pending')::float8 as "pending",
       (select coalesce(sum(amount_cents),0) from expenses
-        where site_id = ${siteId})                                     as "spent",
+        where site_id = ${siteId})::float8 as "spent",
       (select coalesce(sum(amount_cents),0) from dues
-        where site_id = ${siteId})                                     as "accruedDues",
+        where site_id = ${siteId})::float8 as "accruedDues",
       -- Yürürlükteki yapılandırmaların toplamı. Toplu bir rakam olduğu için
       -- kasa gibi herkese açıktır; daire bazlı döküm KVKK gereği değildir.
       (select coalesce(sum(total_cents),0) from restructurings
-        where site_id = ${siteId} and status = 'active')               as "restructured",
+        where site_id = ${siteId} and status = 'active')::float8 as "restructured",
       (select coalesce(sum(case when kind='charge' then amount_cents
                                 else -amount_cents end),0)
-         from adjustments where site_id = ${siteId})                   as "accruedAdjustments"
+         from adjustments where site_id = ${siteId})::float8 as "accruedAdjustments"
   `;
-  const collected = toCents(row?.collected);
-  const spent = toCents(row?.spent);
-  const accrued = toCents(row?.accruedDues) + toCents(row?.accruedAdjustments);
+  const collected = row?.collected;
+  const spent = row?.spent;
+  const accrued = row?.accruedDues + row?.accruedAdjustments;
   return {
     collectedCents: collected,
-    pendingCents: toCents(row?.pending),
+    pendingCents: row?.pending,
     spentCents: spent,
     balanceCents: collected - spent,
     accruedCents: accrued,
     receivableCents: accrued - collected,
     /** Alacağın yapılandırma kapsamındaki kısmı. */
-    restructuredCents: toCents(row?.restructured),
+    restructuredCents: row?.restructured,
   };
 }
 
@@ -278,25 +275,25 @@ export async function unitBalances(
   opts: { page?: Page; unitId?: string; memberOf?: string } = {},
 ) {
   const [site] = await sql`
-    select late_fee_pct as "lateFeePct" from sites where id = ${siteId}
+    select late_fee_pct::float8 as "lateFeePct" from sites where id = ${siteId}
   `;
-  const ratePct = toCents(site?.lateFeePct);
+  const ratePct = site?.lateFeePct;
 
   const restructured = await activeByUnit(siteId);
 
   const rows = (await sql`
-      select u.id, u.block, u.no, u.arsa_payi as "arsaPayi",
+      select u.id, u.block, u.no, u.arsa_payi::float8 as "arsaPayi",
            u.owner_membership_id  as "ownerId",
            u.tenant_membership_id as "tenantId",
            ow.full_name as "ownerName",  ow.email as "ownerEmail",
            te.full_name as "tenantName", te.email as "tenantEmail",
-           coalesce(a.charge, 0) as "chargeCents",
-           coalesce(a.refund, 0) as "refundCents",
-           coalesce(p.paid, 0)   as "paidCents",
-           coalesce(p.pending, 0) as "pendingCents",
+           (coalesce(a.charge, 0))::float8 as "chargeCents",
+           (coalesce(a.refund, 0))::float8 as "refundCents",
+           (coalesce(p.paid, 0))::float8   as "paidCents",
+           (coalesce(p.pending, 0))::float8 as "pendingCents",
            coalesce(d.rows, '[]'::json) as dues,
-           coalesce(d.owner_cents, 0)  as "ownerAccruedCents",
-           coalesce(d.tenant_cents, 0) as "tenantAccruedCents"
+           (coalesce(d.owner_cents, 0))::float8  as "ownerAccruedCents",
+           (coalesce(d.tenant_cents, 0))::float8 as "tenantAccruedCents"
       from units u
       left join memberships om on om.id = u.owner_membership_id
       left join users ow on ow.id = om.user_id
@@ -331,13 +328,12 @@ export async function unitBalances(
   `) as Row[];
 
   const items = rows.map((r) => {
-    const charges = toCents(r.chargeCents);
-    const refunds = toCents(r.refundCents);
-    const paid = toCents(r.paidCents);
+    const charges = r.chargeCents;
+    const refunds = r.refundCents;
+    const paid = r.paidCents;
 
-    const dueRows = (r.dues as { amountCents: string | number; dueDate: string }[]).map(
-      (d) => ({ amountCents: toCents(d.amountCents), dueDate: d.dueDate }),
-    );
+    // json_agg sayıyı JSON sayısı olarak döndürür; ek dönüşüm gerekmez.
+    const dueRows = r.dues as DueRow[];
     const duesTotal = dueRows.reduce((sum, d) => sum + d.amountCents, 0);
 
     /**
@@ -367,7 +363,7 @@ export async function unitBalances(
       id: r.id as string,
       block: r.block as string,
       no: r.no as string,
-      arsaPayi: toCents(r.arsaPayi),
+      arsaPayi: r.arsaPayi,
       ownerId: r.ownerId as string | null,
       ownerName: r.ownerName as string | null,
       ownerEmail: r.ownerEmail as string | null,
@@ -389,10 +385,10 @@ export async function unitBalances(
        * kalemleri kullanıma bağlı olmadığı için tamamı malike yazılır.
        */
       ownerAccruedCents:
-        toCents(r.ownerAccruedCents) + charges - refunds + (plan?.interestCents ?? 0),
-      tenantAccruedCents: toCents(r.tenantAccruedCents),
+        r.ownerAccruedCents + charges - refunds + (plan?.interestCents ?? 0),
+      tenantAccruedCents: r.tenantAccruedCents,
       paidCents: paid,
-      pendingCents: toCents(r.pendingCents),
+      pendingCents: r.pendingCents,
       lateFeeCents: late.lateFeeCents,
       outstandingCents: late.outstandingCents,
       overdueCents: late.overdueCents,
@@ -416,23 +412,23 @@ export async function yearEndSettlement(siteId: string, year: number) {
   const [totals] = await sql`
     select
       (select coalesce(sum(amount_cents),0) from dues
-        where site_id = ${siteId} and period between ${from} and ${to}) as "billed",
+        where site_id = ${siteId} and period between ${from} and ${to})::float8 as "billed",
       (select coalesce(sum(amount_cents),0) from expenses
         where site_id = ${siteId}
-          and extract(year from incurred_on) = ${year})                 as "spent"
+          and extract(year from incurred_on) = ${year})::float8 as "spent"
   `;
-  const billed = toCents(totals?.billed);
-  const spent = toCents(totals?.spent);
+  const billed = totals?.billed;
+  const spent = totals?.spent;
   const differenceCents = billed - spent; // + fazla, − eksik
 
   const units = (await sql`
-    select u.id, u.block, u.no, u.arsa_payi as "arsaPayi"
+    select u.id, u.block, u.no, u.arsa_payi::float8 as "arsaPayi"
       from units u where u.site_id = ${siteId} order by u.block, u.no
   `) as Row[];
   // Mahsuplaşma da aidatın dayandığı ölçüye, arsa payına göre bölünür.
   const shares = distribute(
     Math.abs(differenceCents),
-    units.map((u) => Math.round(toCents(u.arsaPayi) * 10_000)),
+    units.map((u) => Math.round(u.arsaPayi * 10_000)),
   );
 
   const [applied] = await sql`
@@ -446,11 +442,11 @@ export async function yearEndSettlement(siteId: string, year: number) {
     spentCents: spent,
     differenceCents,
     kind: differenceCents >= 0 ? ("refund" as const) : ("charge" as const),
-    alreadyApplied: toCents(applied?.n) > 0,
+    alreadyApplied: applied?.n > 0,
     units: units.map((u, i) => ({
       unitId: u.id as string,
       label: `${u.block ? `${u.block} ` : ""}${u.no}`,
-      arsaPayi: toCents(u.arsaPayi),
+      arsaPayi: u.arsaPayi,
       amountCents: shares[i]!,
     })),
   };

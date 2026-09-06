@@ -1,5 +1,5 @@
 import type { Restructuring } from "../lib/types.ts";
-import { type Row, sql, toCents } from "./db.ts";
+import { type Row, sql } from "./db.ts";
 import { badRequest, conflict, notFound } from "./http.ts";
 import { restructurePlan } from "./money.ts";
 
@@ -21,20 +21,20 @@ const mapRow = (r: Row): Restructuring => ({
   unitId: r.unitId as string,
   block: (r.block ?? "") as string,
   no: (r.no ?? "") as string,
-  principalCents: toCents(r.principalCents),
-  interestPct: toCents(r.interestPct),
-  interestCents: toCents(r.interestCents),
-  totalCents: toCents(r.totalCents),
-  installments: toCents(r.installments),
+  principalCents: r.principalCents,
+  interestPct: r.interestPct,
+  interestCents: r.interestCents,
+  totalCents: r.totalCents,
+  installments: r.installments,
   coversThrough: String(r.coversThrough).slice(0, 10),
   status: r.status as Restructuring["status"],
   note: (r.note ?? null) as string | null,
   createdAt: String(r.createdAt),
   rows: (typeof r.rows === "string" ? JSON.parse(r.rows) : (r.rows ?? [])).map(
     (i: Row) => ({
-      no: toCents(i.no),
+      no: i.no,
       dueDate: String(i.dueDate).slice(0, 10),
-      amountCents: toCents(i.amountCents),
+      amountCents: i.amountCents,
     }),
   ),
 });
@@ -49,8 +49,8 @@ const mapRow = (r: Row): Restructuring => ({
 export async function listRestructurings(siteId: string, unitIds?: string[]) {
   const rows = (await sql`
     select r.id, r.unit_id as "unitId", u.block, u.no,
-           r.principal_cents as "principalCents", r.interest_pct as "interestPct",
-           r.interest_cents as "interestCents", r.total_cents as "totalCents",
+           r.principal_cents::float8 as "principalCents", r.interest_pct::float8 as "interestPct",
+           r.interest_cents::float8 as "interestCents", r.total_cents::float8 as "totalCents",
            r.installments, r.covers_through as "coversThrough", r.status, r.note,
            r.created_at as "createdAt",
            coalesce((select json_agg(json_build_object('no', i.no, 'dueDate', i.due_date,
@@ -71,7 +71,7 @@ export async function listRestructurings(siteId: string, unitIds?: string[]) {
 /** Yürürlükteki yapılandırmaların daire kimliğine göre dizini. */
 export async function activeByUnit(siteId: string) {
   const rows = (await sql`
-    select r.id, r.unit_id as "unitId", r.interest_cents as "interestCents",
+    select r.id, r.unit_id as "unitId", r.interest_cents::float8 as "interestCents",
            r.covers_through as "coversThrough", r.created_at as "createdAt",
            /*
             * Yapılandırmanın anaparası, o ANDAKİ borçtur: daha önceki ödemeler
@@ -105,12 +105,12 @@ export async function activeByUnit(siteId: string) {
   for (const r of rows) {
     index.set(r.unitId as string, {
       id: r.id as string,
-      interestCents: toCents(r.interestCents),
+      interestCents: r.interestCents,
       coversThrough: String(r.coversThrough).slice(0, 10),
-      paidSinceCents: toCents(r.paidSince),
+      paidSinceCents: r.paidSince,
       rows: (typeof r.rows === "string" ? JSON.parse(r.rows) : r.rows).map((i: Row) => ({
         dueDate: String(i.dueDate).slice(0, 10),
-        amountCents: toCents(i.amountCents),
+        amountCents: i.amountCents,
       })),
     });
   }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Auth } from "../auth.ts";
-import { type Row, sql, toCents } from "../db.ts";
+import { type Row, sql } from "../db.ts";
 import {
   badRequest,
   body,
@@ -25,7 +25,7 @@ export function socialRoutes(
     const pg = paging(ctx.url);
     const rows = await sql`
       select d.id, d.title, d.category, d.file_url as "fileUrl", d.file_name as "fileName",
-             d.size_bytes as "sizeBytes", d.created_at as "createdAt",
+             d.size_bytes::float8 as "sizeBytes", d.created_at as "createdAt",
              u.full_name as "uploaderName"
         from documents d
         left join memberships m on m.id = d.uploaded_by
@@ -34,7 +34,7 @@ export function socialRoutes(
        order by d.created_at desc
        limit ${pg.limit} offset ${pg.offset}
     `;
-    return json(paged(rows, pg, (d: Row) => ({ ...d, sizeBytes: toCents(d.sizeBytes) })));
+    return json(paged(rows, pg, (d: Row) => ({ ...d, sizeBytes: d.sizeBytes })));
   });
 
   admin.post("/documents", async (ctx) => {

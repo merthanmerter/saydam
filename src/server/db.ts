@@ -15,11 +15,21 @@ export const sql = new SQL({
 /** Sorgu sonucu satırı. Bun SQL dinamik döner; sınır burada çizilir. */
 export type Row = Record<string, any>;
 
-/**
- * Postgres bigint/numeric sürücüden string gelebilir; tek yerden normalize
- * edilir. Kuruş da adet de aynı dönüşümden geçer.
+/*
+ * Sayısal sütunlar hakkında.
+ *
+ * Sürücü `int8` ve `numeric` değerlerini — büyüklüklerine bakmaksızın —
+ * string döndürür. Bu yüzden para, oran ve sayaç döndüren her sütun
+ * sorgunun kendisinde `::float8` ile dökülür; JavaScript tarafında ayrıca
+ * dönüştürme yapılmaz.
+ *
+ * `float8` burada kesinlik kaybı değildir: değer zaten JS `number`'a, yani
+ * aynı IEEE-754 çift duyarlıklı sayıya çevrilecekti. Tam sayılar 2^53'e
+ * (≈ 90 trilyon TL) kadar birebir temsil edilir; tek bir tutar için üst
+ * sınırımız 1 milyar TL.
+ *
+ * Dönüşüm neden sorguda: JavaScript'te yapıldığında her *kullanım* yerinde
+ * hatırlanması gerekiyordu ve unutulduğunda hata sessizdi — "12" + "34"
+ * aritmetikte "1234" verir. Sorguda yapılınca değer kaynağında doğru olur.
+ * `tests/api-numeric.test.ts` bütün uçları gezip bunu doğruluyor.
  */
-export const toCents = (value: unknown): number => {
-  if (value == null) return 0;
-  return typeof value === "number" ? value : Number(value);
-};

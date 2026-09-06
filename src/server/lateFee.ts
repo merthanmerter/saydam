@@ -7,7 +7,7 @@
  * borçtan başlayarak** mahsup edilir (FIFO). Uygulamada ve içtihatta kabul
  * gören yöntem budur; borçluyu da en az cezalandıran yorumdur.
  */
-type DueRow = { amountCents: number; dueDate: string | Date };
+export type DueRow = { amountCents: number; dueDate: string | Date };
 
 type LateFeeResult = {
   /** Ödenmemiş anaparanın tamamı (vadesi gelmemişler dahil). */

@@ -1,4 +1,4 @@
-import { Store, useStore } from "@tanstack/react-store";
+import { Store, useSelector } from "@tanstack/react-store";
 
 /**
  * Tarayıcıda kalıcı, tepkisel istemci durumu.
@@ -38,7 +38,7 @@ export function persisted<T extends string>(
       }
     },
     /** Bileşenler için: değer değişince yeniden çizilir. */
-    use: () => useStore(store),
+    use: () => useSelector(store),
   };
 }
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Auth } from "../auth.ts";
-import { sql, toCents } from "../db.ts";
+import { sql } from "../db.ts";
 import { env } from "../env.ts";
 import { badRequest, body, HttpError, json, notFound, type Router } from "../http.ts";
 import {
@@ -30,7 +30,7 @@ async function siteAccount(
 ): Promise<(ProviderAccount & { feePct: number }) | null> {
   const [row] = await sql`
     select payment_provider as "provider", payment_credentials as "credentials",
-           payment_sandbox as "sandbox", card_fee_pct as "feePct"
+           payment_sandbox as "sandbox", card_fee_pct::float8 as "feePct"
       from sites where id = ${siteId}
   `;
   if (!row?.provider || !row.credentials) return null;
@@ -38,7 +38,7 @@ async function siteAccount(
     provider: row.provider,
     sandbox: row.sandbox,
     credentials: JSON.parse(decryptSecret(row.credentials)),
-    feePct: toCents(row.feePct),
+    feePct: row.feePct,
   } as ProviderAccount & { feePct: number };
 }
 
@@ -177,13 +177,13 @@ export function billingRoutes(
 
   auth.get("/billing/subscription", async (ctx) => {
     const [row] = await sql`
-      select plan, status, price_cents as "priceCents", bill_to_site as "billToSite",
+      select plan, status, price_cents::float8 as "priceCents", bill_to_site as "billToSite",
              current_period_start as "currentPeriodStart",
              current_period_end as "currentPeriodEnd"
         from subscriptions where site_id = ${ctx.auth.siteId}
     `;
     return json({
-      subscription: row ? { ...row, priceCents: toCents(row.priceCents) } : null,
+      subscription: row ? { ...row, priceCents: row.priceCents } : null,
     });
   });
 

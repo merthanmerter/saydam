@@ -2,7 +2,7 @@ import { z } from "zod";
 import { shareMethodEnum } from "../../lib/schemas.ts";
 import { unitsSummary } from "../accounting.ts";
 import type { Auth } from "../auth.ts";
-import { type Row, sql, toCents } from "../db.ts";
+import { type Row, sql } from "../db.ts";
 import { env } from "../env.ts";
 import {
   badRequest,
@@ -35,17 +35,17 @@ export function siteRoutes(auth: Router<Auth>, admin: Router<Auth>) {
       select id, slug, name, city, address,
              iban, iban_holder as "ibanHolder", bank_name as "bankName",
              accrual_day as "accrualDay", due_day as "dueDay",
-             late_fee_pct as "lateFeePct",
+             late_fee_pct::float8 as "lateFeePct",
              default_share_method as "defaultShareMethod",
              debt_visibility as "debtVisibility",
              payment_provider as "paymentProvider",
              payment_credentials as "paymentCredentials",
-             payment_sandbox as "paymentSandbox", card_fee_pct as "cardFeePct"
+             payment_sandbox as "paymentSandbox", card_fee_pct::float8 as "cardFeePct"
         from sites where id = ${ctx.auth.siteId}
     `;
     const [subscription] = env.saasMode
       ? await sql`
-          select plan, status, price_cents as "priceCents", bill_to_site as "billToSite",
+          select plan, status, price_cents::float8 as "priceCents", bill_to_site as "billToSite",
                  current_period_end as "currentPeriodEnd"
             from subscriptions where site_id = ${ctx.auth.siteId}
         `
@@ -68,7 +68,7 @@ export function siteRoutes(auth: Router<Auth>, admin: Router<Auth>) {
             : null,
         providers: PROVIDERS,
         /** Kartla ödemede sakine yansıtılan komisyon farkı (%). */
-        feePct: toCents(cardFeePct),
+        feePct: cardFeePct,
       },
     });
   });
@@ -228,7 +228,7 @@ export function siteRoutes(auth: Router<Auth>, admin: Router<Auth>) {
   auth.get("/units", async (ctx) => {
     const pg = paging(ctx.url);
     const units = await sql`
-      select u.id, u.block, u.no, u.floor, u.arsa_payi as "arsaPayi",
+      select u.id, u.block, u.no, u.floor, u.arsa_payi::float8 as "arsaPayi",
              u.owner_membership_id  as "ownerMembershipId",
              u.tenant_membership_id as "tenantMembershipId",
              ow.full_name as "ownerName", te.full_name as "tenantName"
@@ -242,7 +242,7 @@ export function siteRoutes(auth: Router<Auth>, admin: Router<Auth>) {
        limit ${pg.limit} offset ${pg.offset}
     `;
     return json({
-      ...paged(units, pg, (u: Row) => ({ ...u, arsaPayi: toCents(u.arsaPayi) })),
+      ...paged(units, pg, (u: Row) => ({ ...u, arsaPayi: u.arsaPayi })),
       summary: await unitsSummary(ctx.auth.siteId),
     });
   });
@@ -417,7 +417,7 @@ export function siteRoutes(auth: Router<Auth>, admin: Router<Auth>) {
       select role from memberships where id = ${ctx.params.id!} and site_id = ${ctx.auth.siteId}
     `;
     if (!target) throw notFound("Sakin bulunamadı");
-    if (target.role === "admin" && toCents(admins?.n) <= 1) {
+    if (target.role === "admin" && admins?.n <= 1) {
       throw conflict("Sitede en az bir yönetici kalmalı");
     }
     await sql.begin(async (tx) => {

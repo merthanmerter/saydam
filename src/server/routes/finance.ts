@@ -11,7 +11,7 @@ import {
   yearEndSettlement,
 } from "../accounting.ts";
 import type { Auth } from "../auth.ts";
-import { type Row, sql, toCents } from "../db.ts";
+import { type Row, sql } from "../db.ts";
 import {
   badRequest,
   body,
@@ -125,14 +125,14 @@ export function financeRoutes(
   // ─── Düzenli giderler (bütçe kalemleri) ──────────────────────────────────
   auth.get("/recurring", async (ctx) => {
     const rows = await sql`
-      select id, title, category, amount_cents as "amountCents",
+      select id, title, category, amount_cents::float8 as "amountCents",
              share_method as "shareMethod", payer,
              start_period as "startPeriod", end_period as "endPeriod", note
         from recurring_expenses where site_id = ${ctx.auth.siteId}
        order by title
     `;
     return json({
-      recurring: rows.map((r: any) => ({ ...r, amountCents: toCents(r.amountCents) })),
+      recurring: rows.map((r: any) => ({ ...r, amountCents: r.amountCents })),
     });
   });
 
@@ -183,8 +183,8 @@ export function financeRoutes(
     const pg = paging(ctx.url);
     const rows = await sql`
       select e.id, e.kind, e.title, e.category, e.vendor,
-             e.amount_cents as "amountCents", e.incurred_on as "incurredOn",
-             e.period, e.installments, e.surcharge_pct as "surchargePct",
+             e.amount_cents::float8 as "amountCents", e.incurred_on as "incurredOn",
+             e.period, e.installments, e.surcharge_pct::float8 as "surchargePct",
              e.share_method as "shareMethod", e.payer,
              e.invoice_url as "invoiceUrl", e.invoice_name as "invoiceName", e.note,
              e.recurring_expense_id as "recurringExpenseId", r.title as "budgetTitle",
@@ -204,11 +204,11 @@ export function financeRoutes(
       year,
       ...paged(rows, pg, (e: Row) => ({
         ...e,
-        amountCents: toCents(e.amountCents),
-        surchargePct: toCents(e.surchargePct),
+        amountCents: e.amountCents,
+        surchargePct: e.surchargePct,
         allocations: (e.allocations as Row[]).map((a) => ({
           period: a.period,
-          amountCents: toCents(a.amountCents),
+          amountCents: a.amountCents,
         })),
       })),
     });
@@ -349,12 +349,12 @@ export function financeRoutes(
     if (ctx.auth.role === "admin") await syncSubscriptionExpense(ctx.auth.siteId, period);
     const budget = await periodBudget(ctx.auth.siteId, period);
     const [run] = await sql`
-      select id, total_cents as "totalCents", created_at as "createdAt"
+      select id, total_cents::float8 as "totalCents", created_at as "createdAt"
         from dues_runs where site_id = ${ctx.auth.siteId} and period = ${period}
     `;
     return json({
       ...budget,
-      run: run ? { ...run, totalCents: toCents(run.totalCents) } : null,
+      run: run ? { ...run, totalCents: run.totalCents } : null,
     });
   });
 
@@ -368,8 +368,8 @@ export function financeRoutes(
     const mineOnly = ctx.auth.view !== "admin";
     const pg = paging(ctx.url);
     const rows = await sql`
-      select d.id, d.period, d.amount_cents as "amountCents", d.arsa_payi as "arsaPayi",
-             d.owner_cents as "ownerCents", d.tenant_cents as "tenantCents",
+      select d.id, d.period, d.amount_cents::float8 as "amountCents", d.arsa_payi::float8 as "arsaPayi",
+             d.owner_cents::float8 as "ownerCents", d.tenant_cents::float8 as "tenantCents",
              d.due_date as "dueDate", d.breakdown,
              u.block, u.no,
              coalesce(u.owner_membership_id, u.tenant_membership_id) as "membershipId",
@@ -391,10 +391,10 @@ export function financeRoutes(
       period,
       ...paged(rows, pg, (d: Row) => ({
         ...d,
-        amountCents: toCents(d.amountCents),
-        ownerCents: toCents(d.ownerCents),
-        tenantCents: toCents(d.tenantCents),
-        arsaPayi: toCents(d.arsaPayi),
+        amountCents: d.amountCents,
+        ownerCents: d.ownerCents,
+        tenantCents: d.tenantCents,
+        arsaPayi: d.arsaPayi,
         // jsonb sürücüden dize gelir; istemciye çözülmüş hâlde gitsin.
         breakdown: parseBreakdown(d.breakdown),
         residentName: ctx.auth.view === "admin" ? d.residentName : undefined,
@@ -405,7 +405,7 @@ export function financeRoutes(
   /** Sakinin kendi dairelerinin tüm aidat geçmişi. */
   auth.get("/dues/mine", async (ctx) => {
     const rows = await sql`
-      select d.period, d.amount_cents as "amountCents", u.block, u.no, u.id as "unitId"
+      select d.period, d.amount_cents::float8 as "amountCents", u.block, u.no, u.id as "unitId"
         from dues d
         join units u on u.id = d.unit_id
        where d.site_id = ${ctx.auth.siteId}
@@ -415,7 +415,7 @@ export function financeRoutes(
        order by d.period desc
     `;
     return json({
-      dues: rows.map((d: any) => ({ ...d, amountCents: toCents(d.amountCents) })),
+      dues: rows.map((d: any) => ({ ...d, amountCents: d.amountCents })),
     });
   });
 
@@ -424,7 +424,7 @@ export function financeRoutes(
     const mineOnly = ctx.auth.view !== "admin";
     const pg = paging(ctx.url);
     const rows = await sql`
-      select p.id, p.amount_cents as "amountCents", p.method, p.status, p.reference,
+      select p.id, p.amount_cents::float8 as "amountCents", p.method, p.status, p.reference,
              p.receipt_url as "receiptUrl", p.note, p.paid_at as "paidAt",
              p.created_at as "createdAt", p.unit_id as "unitId",
              u.block, u.no, us.full_name as "payerName"
@@ -440,9 +440,7 @@ export function financeRoutes(
        order by p.created_at desc
        limit ${pg.limit} offset ${pg.offset}
     `;
-    return json(
-      paged(rows, pg, (p: Row) => ({ ...p, amountCents: toCents(p.amountCents) })),
-    );
+    return json(paged(rows, pg, (p: Row) => ({ ...p, amountCents: p.amountCents })));
   });
 
   /**
@@ -681,27 +679,20 @@ export function financeRoutes(
       select (extract(year from ay) * 100 + extract(month from ay))::int as period,
              coalesce((select sum(p.amount_cents) from payments p
                         where p.site_id = ${ctx.auth.siteId} and p.status = 'confirmed'
-                          and p.paid_at >= ay and p.paid_at < ay + interval '1 month'), 0)
+                          and p.paid_at >= ay and p.paid_at < ay + interval '1 month'), 0)::float8
                as "collectedCents",
              coalesce((select sum(e.amount_cents) from expenses e
                         where e.site_id = ${ctx.auth.siteId}
                           and e.incurred_on >= ay
-                          and e.incurred_on < ay + interval '1 month'), 0)
+                          and e.incurred_on < ay + interval '1 month'), 0)::float8
                as "spentCents",
              coalesce((select sum(d.amount_cents) from dues d
                         where d.site_id = ${ctx.auth.siteId}
-                          and d.period = extract(year from ay) * 100 + extract(month from ay)), 0)
+                          and d.period = extract(year from ay) * 100 + extract(month from ay)), 0)::float8
                as "accruedCents"
         from aylar order by ay
     `;
-    return json({
-      months: rows.map((row: Row) => ({
-        period: toCents(row.period),
-        collectedCents: toCents(row.collectedCents),
-        spentCents: toCents(row.spentCents),
-        accruedCents: toCents(row.accruedCents),
-      })),
-    });
+    return json({ months: rows });
   });
 
   auth.get("/reports/year-end/:year", async (ctx) => {
