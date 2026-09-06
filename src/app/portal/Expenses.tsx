@@ -27,8 +27,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { del, post, useAction, usePaged, useSuspenseApi } from "@/lib/api";
-import { currentPeriod, date, money, periodLabel, toCents, today } from "@/lib/format";
+import { del, patch, post, useAction, usePaged, useSuspenseApi } from "@/lib/api";
+import {
+  currentPeriod,
+  date,
+  fromCents,
+  money,
+  periodLabel,
+  toCents,
+  today,
+} from "@/lib/format";
 import { expenseSchema } from "@/lib/schemas";
 import {
   type Expense,
@@ -56,7 +64,8 @@ export default function Expenses() {
     startTransition(() => void navigate({ to: "/panel/giderler", search: { yil } }));
   const expenses = usePaged<Expense>(`/expenses?year=${year}`);
   const recurring = useSuspenseApi<{ recurring: Recurring[] }>("/recurring");
-  const expenseCols = useMemo(() => expenseColumns(isAdmin), [isAdmin]);
+  const [editing, setEditing] = useState<Expense | null>(null);
+  const expenseCols = useMemo(() => expenseColumns(isAdmin, setEditing), [isAdmin]);
   const recurringCols = useMemo(() => recurringColumns(isAdmin), [isAdmin]);
 
   return (
@@ -68,6 +77,15 @@ export default function Expenses() {
           isAdmin && <AddExpenseDialog recurring={recurring.data?.recurring ?? []} />
         }
       />
+
+      {editing && (
+        <AddExpenseDialog
+          key={editing.id}
+          recurring={recurring.data?.recurring ?? []}
+          expense={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       <Tabs defaultValue="actual">
         <TabsList>
@@ -135,7 +153,10 @@ export default function Expenses() {
   );
 }
 
-const expenseColumns = (isAdmin: boolean): Column<Expense>[] => [
+const expenseColumns = (
+  isAdmin: boolean,
+  onEdit: (expense: Expense) => void,
+): Column<Expense>[] => [
   {
     accessorKey: "incurredOn",
     header: "Tarih",
@@ -215,11 +236,15 @@ const expenseColumns = (isAdmin: boolean): Column<Expense>[] => [
       ),
   },
   ...(isAdmin
-    ? [actionsColumn<Expense>(({ row }) => <ExpenseActions expense={row.original} />)]
+    ? [
+        actionsColumn<Expense>(({ row }) => (
+          <ExpenseActions expense={row.original} onEdit={() => onEdit(row.original)} />
+        )),
+      ]
     : []),
 ];
 
-function ExpenseActions({ expense }: { expense: Expense }) {
+function ExpenseActions({ expense, onEdit }: { expense: Expense; onEdit: () => void }) {
   const remove = useAction(() => del(`/expenses/${expense.id}`), {
     invalidate: ["/expenses", "/budget", "/reports"],
     success: "Gider silindi",
@@ -228,6 +253,8 @@ function ExpenseActions({ expense }: { expense: Expense }) {
   return (
     <RowActions
       actions={[
+        // Platform gideri sistemin kendi kaydı; elle düzeltilmez.
+        { label: "Düzelt", onSelect: onEdit, disabled: expense.kind === "system" },
         {
           label: "Sil",
           destructive: true,
@@ -334,15 +361,37 @@ function RecurringActions({ item }: { item: Recurring }) {
  *   Olağanüstü → tek seferlik harcama. Faturasıyla girilir, istenirse aylara
  *                bölünür ve üzerine işletme payı eklenir.
  */
-function AddExpenseDialog({ recurring }: { recurring: Recurring[] }) {
-  const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<"recurring" | "one_off">("recurring");
+/**
+ * Gider ekleme ve düzeltme.
+ *
+ * `expense` verildiğinde form o kaydın değerleriyle açılır, tetikleyici düğme
+ * çizilmez ve tür/kalem seçimleri kilitlenir: bir gideri düzeltmek onu başka
+ * bir türe çevirmek değildir. Tahakkuka yansımış gideri sunucu reddeder.
+ */
+function AddExpenseDialog({
+  recurring,
+  expense,
+  onClose,
+}: {
+  recurring: Recurring[];
+  expense?: Expense;
+  onClose?: () => void;
+}) {
+  const editing = expense !== undefined;
+  const [open, setOpen] = useState(editing);
+  const [kind, setKind] = useState<"recurring" | "one_off">(
+    expense?.kind === "one_off" ? "one_off" : "recurring",
+  );
   /** Düzenli dalında hangi bütçe kalemi: "new" → yeni kalem tanımla. */
-  const [budgetLine, setBudgetLine] = useState("new");
-  const [invoice, setInvoice] = useState<UploadedFile | null>(null);
+  const [budgetLine, setBudgetLine] = useState(expense?.recurringExpenseId ?? "new");
+  const [invoice, setInvoice] = useState<UploadedFile | null>(
+    expense?.invoiceUrl
+      ? { url: expense.invoiceUrl, name: expense.invoiceName ?? "fatura", size: 0 }
+      : null,
+  );
 
   /** Yeni bütçe kalemi tanımlanıyor: fatura beklenmez, kayıt plana yazılır. */
-  const definingLine = kind === "recurring" && budgetLine === "new";
+  const definingLine = !editing && kind === "recurring" && budgetLine === "new";
   const oneOff = kind === "one_off";
   const ready = definingLine || invoice !== null;
 
@@ -351,6 +400,24 @@ function AddExpenseDialog({ recurring }: { recurring: Recurring[] }) {
       const amountCents = toCents(value.amount);
       const installments = Number(value.installments);
       const surcharge = Number(value.surchargePct.replace(",", "."));
+      if (editing) {
+        return patch(`/expenses/${expense.id}`, {
+          title: value.title,
+          category: value.category,
+          vendor: value.vendor || null,
+          amountCents,
+          incurredOn: value.incurredOn,
+          period: value.period,
+          recurringExpenseId: expense.recurringExpenseId,
+          shareMethod: value.shareMethod,
+          payer: value.payer,
+          installments: expense.kind === "one_off" ? installments : 1,
+          surchargePct: expense.kind === "one_off" ? surcharge : 0,
+          invoiceUrl: invoice?.url,
+          invoiceName: invoice?.name,
+          note: value.note || null,
+        });
+      }
       return definingLine
         ? post("/recurring", {
             title: value.title,
@@ -381,77 +448,93 @@ function AddExpenseDialog({ recurring }: { recurring: Recurring[] }) {
     },
     {
       invalidate: ["/recurring", "/expenses", "/budget", "/reports"],
-      success: definingLine ? "Bütçe kalemi eklendi" : "Gider kaydedildi",
-      onDone: () => setOpen(false),
+      success: editing
+        ? "Gider düzeltildi"
+        : definingLine
+          ? "Bütçe kalemi eklendi"
+          : "Gider kaydedildi",
+      onDone: () => close(),
     },
   );
 
   const form = useAppForm({
     defaultValues: {
-      title: "",
-      category: "genel",
-      vendor: "",
-      amount: "",
-      incurredOn: today(),
-      period: currentPeriod(),
-      startPeriod: currentPeriod(),
-      shareMethod: "arsa_payi",
-      payer: "malik",
-      installments: "1",
-      surchargePct: "0",
-      note: "",
+      title: expense?.title ?? "",
+      category: expense?.category ?? "genel",
+      vendor: expense?.vendor ?? "",
+      amount: expense ? fromCents(expense.amountCents) : "",
+      incurredOn: (expense?.incurredOn ?? today()).slice(0, 10),
+      period: expense?.period ?? currentPeriod(),
+      startPeriod: expense?.period ?? currentPeriod(),
+      shareMethod: expense?.shareMethod ?? "arsa_payi",
+      payer: expense?.payer ?? "malik",
+      installments: String(expense?.installments ?? 1),
+      surchargePct: String(expense?.surchargePct ?? 0),
+      note: expense?.note ?? "",
     } as z.infer<typeof expenseSchema>,
     ...validate(expenseSchema),
     onSubmit: ({ value }) => create.mutateAsync(value),
   });
 
+  const close = () => {
+    setOpen(false);
+    onClose?.();
+  };
+
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        setOpen(next);
-        if (next) {
+        if (!next) return close();
+        setOpen(true);
+        if (!editing) {
           form.reset();
           setInvoice(null);
           setBudgetLine("new");
         }
       }}
     >
-      <DialogTrigger asChild>
-        <Button>
-          <Plus className="size-4" /> Gider ekle
-        </Button>
-      </DialogTrigger>
+      {!editing && (
+        <DialogTrigger asChild>
+          <Button>
+            <Plus className="size-4" /> Gider ekle
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Gider ekle</DialogTitle>
+          <DialogTitle>{editing ? "Gideri düzelt" : "Gider ekle"}</DialogTitle>
           <DialogDescription>
-            {definingLine
-              ? "Her ay tekrar eden bütçe kalemi. Belirtilen dönemden itibaren aidata otomatik yansır."
-              : "Fatura zorunludur. Bir bütçe kalemine mahsup edilen gider aidata tekrar yansımaz."}
+            {editing
+              ? "Tahakkuka yansımış bir gider değiştirilemez; önce o dönemi yeniden hesaplayın."
+              : definingLine
+                ? "Her ay tekrar eden bütçe kalemi. Belirtilen dönemden itibaren aidata otomatik yansır."
+                : "Fatura zorunludur. Bir bütçe kalemine mahsup edilen gider aidata tekrar yansımaz."}
           </DialogDescription>
         </DialogHeader>
         <Form form={form} className="grid gap-4">
           {/* Tür ve bütçe kalemi hangi alanların görüneceğini belirler; form
-              verisi değil, ekran durumudur. */}
-          <Field label="Tür">
-            <Tabs
-              value={kind}
-              onValueChange={(next) => setKind(next as typeof kind)}
-              className="w-full"
-            >
-              <TabsList className="w-full">
-                <TabsTrigger value="recurring" className="flex-1">
-                  <CalendarSync className="size-4" /> Düzenli
-                </TabsTrigger>
-                <TabsTrigger value="one_off" className="flex-1">
-                  <Layers className="size-4" /> Olağanüstü
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </Field>
+              verisi değil, ekran durumudur. Düzeltmede ikisi de sabit. */}
+          {!editing && (
+            <Field label="Tür">
+              <Tabs
+                value={kind}
+                onValueChange={(next) => setKind(next as typeof kind)}
+                className="w-full"
+              >
+                <TabsList className="w-full">
+                  <TabsTrigger value="recurring" className="flex-1">
+                    <CalendarSync className="size-4" /> Düzenli
+                  </TabsTrigger>
+                  <TabsTrigger value="one_off" className="flex-1">
+                    <Layers className="size-4" /> Olağanüstü
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </Field>
+          )}
 
-          {kind === "recurring" && (
+          {!editing && kind === "recurring" && (
             <Field
               label="Bütçe kalemi"
               hint={
@@ -599,11 +682,13 @@ function AddExpenseDialog({ recurring }: { recurring: Recurring[] }) {
           <DialogActions>
             <form.AppForm>
               <form.Submit disabled={!ready}>
-                {definingLine
-                  ? "Bütçe kalemi tanımla"
-                  : ready
-                    ? "Gideri kaydet"
-                    : "Önce fatura yükleyin"}
+                {editing
+                  ? "Düzeltmeyi kaydet"
+                  : definingLine
+                    ? "Bütçe kalemi tanımla"
+                    : ready
+                      ? "Gideri kaydet"
+                      : "Önce fatura yükleyin"}
               </form.Submit>
             </form.AppForm>
           </DialogActions>

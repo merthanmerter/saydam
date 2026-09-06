@@ -208,6 +208,16 @@
   html {
     scrollbar-gutter: stable;
   }
+  /*
+   * Radix (menü, diyalog, sheet) kaydırmayı kilitlerken kaybolan çubuğun
+   * yerini gövdeye sağdan boşluk ekleyerek telafi eder. Üstteki
+   * `scrollbar-gutter` o yeri zaten kalıcı olarak ayırdığından ikinci telafi
+   * fazladan geliyor ve menü her açıldığında sayfa çubuk genişliği kadar
+   * sola kayıyordu.
+   */
+  body[data-scroll-locked] {
+    padding-right: 0 !important;
+  }
   body {
     @apply bg-background text-foreground;
   }

@@ -177,7 +177,7 @@ export function financeRoutes(
              e.period, e.installments, e.surcharge_pct as "surchargePct",
              e.share_method as "shareMethod", e.payer,
              e.invoice_url as "invoiceUrl", e.invoice_name as "invoiceName", e.note,
-             r.title as "budgetTitle",
+             e.recurring_expense_id as "recurringExpenseId", r.title as "budgetTitle",
              coalesce((select json_agg(json_build_object('period', a.period,
                                                          'amountCents', a.amount_cents)
                                        order by a.period)
@@ -256,20 +256,24 @@ export function financeRoutes(
     return json({ id }, { status: 201 });
   });
 
-  admin.delete("/expenses/:id", async (ctx) => {
-    // Önce kaydın bu siteye ait olduğu doğrulanır; aksi hâlde site dışı bir
-    // kimlikle yapılan istek hiçbir şey silmeden "başarılı" dönerdi.
+  /**
+   * Tahakkuka yansımış gider değiştirilemez.
+   *
+   * Hem düzenleme hem silme aynı kilide tabi: aidatı hesaplanmış bir dönemin
+   * gideri sonradan değişirse, sakinlere gönderilmiş tutarla kayıt tutmaz.
+   * Kaydın bu siteye ait olduğu da burada doğrulanır; aksi hâlde site dışı
+   * bir kimlikle yapılan istek hiçbir şeye dokunmadan "başarılı" dönerdi.
+   */
+  const assertExpenseEditable = async (id: string, siteId: string) => {
     const [expense] = await sql`
-      select 1 from expenses
-       where id = ${ctx.params.id!} and site_id = ${ctx.auth.siteId}
+      select kind from expenses where id = ${id} and site_id = ${siteId}
     `;
     if (!expense) throw notFound("Gider bulunamadı");
 
     const [locked] = await sql`
       select r.period from dues_runs r
-       where r.site_id = ${ctx.auth.siteId}
-         and r.period in (select period from expense_allocations
-                           where expense_id = ${ctx.params.id!})
+       where r.site_id = ${siteId}
+         and r.period in (select period from expense_allocations where expense_id = ${id})
        limit 1
     `;
     if (locked) {
@@ -277,6 +281,54 @@ export function financeRoutes(
         `Bu gider ${periodLabel(locked.period)} tahakkukuna yansımış. Önce o dönemi yeniden hesaplayın.`,
       );
     }
+    return expense.kind as "budgeted" | "one_off" | "system";
+  };
+
+  admin.patch("/expenses/:id", async (ctx) => {
+    const id = ctx.params.id!;
+    const kind = await assertExpenseEditable(id, ctx.auth.siteId);
+    if (kind === "system") throw conflict("Platform gideri elle değiştirilemez");
+
+    const input = await body(ctx.req, expenseSchema);
+    if (!belongsToSite(input.invoiceUrl, ctx.auth.siteId)) {
+      throw badRequest("Fatura dosyası bu siteye ait değil");
+    }
+
+    await sql.begin(async (tx) => {
+      await tx`
+        update expenses
+           set title = ${input.title}, category = ${input.category}, vendor = ${input.vendor},
+               amount_cents = ${input.amountCents}, incurred_on = ${input.incurredOn},
+               period = ${input.period}, installments = ${input.installments},
+               surcharge_pct = ${input.surchargePct}, share_method = ${input.shareMethod},
+               payer = ${input.payer}, invoice_url = ${input.invoiceUrl},
+               invoice_name = ${input.invoiceName}, note = ${input.note}
+         where id = ${id} and site_id = ${ctx.auth.siteId}
+      `;
+      // Tutar, dönem ya da taksit değişmiş olabilir: plan baştan kurulur.
+      await tx`delete from expense_allocations where expense_id = ${id}`;
+      if (kind === "one_off") {
+        const plan = installmentPlan(
+          input.amountCents,
+          input.period,
+          input.installments,
+          input.surchargePct,
+        );
+        await tx`insert into expense_allocations ${tx(
+          plan.map((p) => ({
+            expense_id: id,
+            site_id: ctx.auth.siteId,
+            period: p.period,
+            amount_cents: p.amountCents,
+          })),
+        )}`;
+      }
+    });
+    return json({ ok: true });
+  });
+
+  admin.delete("/expenses/:id", async (ctx) => {
+    await assertExpenseEditable(ctx.params.id!, ctx.auth.siteId);
     await sql`delete from expenses where id = ${ctx.params.id!} and site_id = ${ctx.auth.siteId}`;
     return json({ ok: true });
   });
@@ -440,6 +492,66 @@ export function financeRoutes(
       returning id
     `;
     return json({ id: row.id }, { status: 201 });
+  });
+
+  /**
+   * Tahsilat düzeltme.
+   *
+   * Yanlış daireye ya da yanlış tutarla girilmiş bir kaydı silip yeniden
+   * girmek yerine düzeltmek gerekir; silme kasa geçmişinde boşluk bırakır.
+   * Mahsuplaşması yapılmış bir yılın kaydı değiştirilemez: o yılın farkı
+   * dairelere zaten dağıtılmış olurdu ve tutar geriye dönük oynatılırsa
+   * dağıtım tutmaz. Kart tahsilatı da sağlayıcıdan geldiği için elle
+   * değiştirilmez.
+   */
+  admin.patch("/payments/:id", async (ctx) => {
+    const id = ctx.params.id!;
+    const [existing] = await sql`
+      select method, extract(year from paid_at)::int as year
+        from payments where id = ${id} and site_id = ${ctx.auth.siteId}
+    `;
+    if (!existing) throw notFound("Ödeme bulunamadı");
+    if (existing.method === "online") {
+      throw conflict("Kartla yapılan tahsilat elle değiştirilemez");
+    }
+
+    const input = await body(
+      ctx.req,
+      z.object({
+        unitId: z.uuid(),
+        amountCents: cents,
+        method: z.enum(["transfer", "cash"]),
+        paidAt: z.iso.date(),
+        reference: z.string().trim().max(120).nullable().default(null),
+      }),
+    );
+
+    const years = [existing.year, Number(input.paidAt.slice(0, 4))];
+    const [settled] = await sql`
+      select year from adjustments
+       where site_id = ${ctx.auth.siteId} and year in ${sql(years)} limit 1
+    `;
+    if (settled) {
+      throw conflict(
+        `${settled.year} yılı mahsuplaşması yapılmış; o yılın tahsilatı değiştirilemez.`,
+      );
+    }
+
+    const [unit] = await sql`
+      select coalesce(tenant_membership_id, owner_membership_id) as "membershipId"
+        from units where id = ${input.unitId} and site_id = ${ctx.auth.siteId}
+    `;
+    if (!unit) throw notFound("Daire bulunamadı");
+
+    await sql`
+      update payments
+         set unit_id = ${input.unitId}, membership_id = ${unit.membershipId},
+             amount_cents = ${input.amountCents}, method = ${input.method},
+             paid_at = ${input.paidAt}, reference = ${input.reference},
+             decided_by = ${ctx.auth.membershipId}, decided_at = now()
+       where id = ${id} and site_id = ${ctx.auth.siteId}
+    `;
+    return json({ ok: true });
   });
 
   admin.post("/payments/:id/decide", async (ctx) => {

@@ -1,6 +1,14 @@
 import { useStore } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
-import { Banknote, CalendarClock, CreditCard, Landmark, Wallet } from "lucide-react";
+import {
+  Banknote,
+  CalendarClock,
+  Check,
+  CreditCard,
+  Landmark,
+  Wallet,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { z } from "zod";
@@ -33,6 +41,7 @@ import {
 import {
   del,
   type Paged,
+  patch,
   post,
   useAction,
   useApi,
@@ -67,7 +76,8 @@ export default function Payments() {
   const payments = usePaged<Payment>("/payments");
   const balances = useSuspenseApi<Paged<Balance>>("/reports/balances?size=500");
   const site = useSuspenseApi<{ site: Site; onlinePayment: OnlinePayment }>("/site");
-  const columns = useMemo(() => paymentColumns(isAdmin), [isAdmin]);
+  const [editing, setEditing] = useState<Payment | null>(null);
+  const columns = useMemo(() => paymentColumns(isAdmin, setEditing), [isAdmin]);
   // Ödeme sağlayıcısı sonucu adres üzerinden döndürür.
   const { odeme } = paymentsRoute.useSearch();
   const navigate = useNavigate();
@@ -117,6 +127,14 @@ export default function Payments() {
         }
       />
 
+      {editing && (
+        <ManualPaymentDialog
+          key={editing.id}
+          payment={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
       {!isAdmin && site.data?.site.iban && (
         <Card className="mb-5 gap-2">
           <CardHeader>
@@ -159,7 +177,10 @@ export default function Payments() {
 }
 
 /** Ödeyen ve işlem sütunlarını yalnızca yönetim görür. */
-const paymentColumns = (isAdmin: boolean): Column<Payment>[] => [
+const paymentColumns = (
+  isAdmin: boolean,
+  onEdit: (payment: Payment) => void,
+): Column<Payment>[] => [
   {
     id: "date",
     header: "Tarih",
@@ -226,42 +247,59 @@ const paymentColumns = (isAdmin: boolean): Column<Payment>[] => [
     ),
   },
   ...(isAdmin
-    ? [actionsColumn<Payment>(({ row }) => <PaymentActions payment={row.original} />)]
+    ? [
+        actionsColumn<Payment>(({ row }) => (
+          <PaymentActions payment={row.original} onEdit={() => onEdit(row.original)} />
+        )),
+      ]
     : []),
 ];
 
-function PaymentActions({ payment }: { payment: Payment }) {
+/**
+ * Satır işlemleri.
+ *
+ * Bekleyen bildirimde onay ve ret iki ayrı düğme: yönetimin bu ekranda
+ * yaptığı iş bunlardan ibaret, menünün arkasına saklamak fazladan bir tık.
+ * Onaylanmış kayıtta ise tek iş var (düzeltme), o da menüde.
+ */
+function PaymentActions({ payment, onEdit }: { payment: Payment; onEdit: () => void }) {
   const decide = useAction(
     (status: "confirmed" | "rejected") =>
       post(`/payments/${payment.id}/decide`, { status, note: null }),
     { invalidate: ["/payments", "/reports"], success: "Ödeme güncellendi" },
   );
 
-  if (payment.status !== "pending") return null;
+  if (payment.status === "pending") {
+    return (
+      <div className="flex justify-end gap-1.5">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={decide.isPending}
+          onClick={() => decide.mutate("confirmed")}
+        >
+          <Check className="size-4" /> Onayla
+        </Button>
+        <ConfirmDialog
+          trigger={
+            <Button variant="ghost" size="sm" disabled={decide.isPending}>
+              <X className="size-4" /> Reddet
+            </Button>
+          }
+          title="Ödeme reddedilsin mi?"
+          description="Bildirim reddedilir, kasaya işlenmez ve daire borcu olduğu gibi kalır. Sakin yeniden bildirim yapabilir."
+          confirmLabel="Reddet"
+          destructive
+          onConfirm={() => decide.mutate("rejected")}
+        />
+      </div>
+    );
+  }
 
-  return (
-    <RowActions
-      actions={[
-        {
-          label: "Onayla",
-          disabled: decide.isPending,
-          onSelect: () => decide.mutate("confirmed"),
-        },
-        {
-          label: "Reddet",
-          destructive: true,
-          disabled: decide.isPending,
-          onSelect: () => decide.mutate("rejected"),
-          confirm: {
-            title: "Ödeme reddedilsin mi?",
-            description:
-              "Bildirim reddedilir, kasaya işlenmez ve daire borcu olduğu gibi kalır. Sakin yeniden bildirim yapabilir.",
-            confirmLabel: "Reddet",
-          },
-        },
-      ]}
-    />
-  );
+  // Kart tahsilatı sağlayıcıdan geldiği için elle düzeltilmez.
+  if (payment.status !== "confirmed" || payment.method === "online") return null;
+
+  return <RowActions actions={[{ label: "Düzelt", onSelect: onEdit }]} />;
 }
 
 /** `withResident` yönetim tarafında açıktır: daire numarasının yanında sakinin adı görünür. */
@@ -470,51 +508,76 @@ function OnlinePayDialog({ units, feePct }: { units: Balance[]; feePct: number }
   );
 }
 
-function ManualPaymentDialog() {
-  const [open, setOpen] = useState(false);
+/**
+ * Tahsilat kaydı — girme ve düzeltme aynı form.
+ *
+ * `payment` verildiğinde form o kaydın değerleriyle açılır ve tetikleyici
+ * düğme çizilmez; satır menüsünden açılır. Yanlış girilmiş bir kaydı silip
+ * yeniden girmek kasa geçmişinde boşluk bırakırdı.
+ */
+function ManualPaymentDialog({
+  payment,
+  onClose,
+}: {
+  payment?: Payment;
+  onClose?: () => void;
+}) {
+  const [open, setOpen] = useState(payment !== undefined);
   const balances = useSuspenseApi<Paged<Balance>>("/reports/balances?size=500");
 
-  const create = useAction(
-    (value: z.infer<typeof manualPaymentSchema>) =>
-      post("/payments", {
+  const close = () => {
+    setOpen(false);
+    onClose?.();
+  };
+
+  const save = useAction(
+    (value: z.infer<typeof manualPaymentSchema>) => {
+      const payload = {
         unitId: value.unitId,
         amountCents: toCents(value.amount),
         method: value.method,
         paidAt: value.paidAt,
         reference: value.reference || null,
-        note: null,
-      }),
+      };
+      return payment
+        ? patch(`/payments/${payment.id}`, payload)
+        : post("/payments", { ...payload, note: null });
+    },
     {
       invalidate: ["/payments", "/reports"],
-      success: "Tahsilat kaydedildi",
-      onDone: () => setOpen(false),
+      success: payment ? "Tahsilat düzeltildi" : "Tahsilat kaydedildi",
+      onDone: () => close(),
     },
   );
 
   const form = useAppForm({
     defaultValues: {
-      unitId: "",
-      amount: "",
-      method: "transfer",
-      paidAt: today(),
-      reference: "",
+      unitId: payment?.unitId ?? "",
+      amount: payment ? fromCents(payment.amountCents) : "",
+      method: payment?.method === "cash" ? "cash" : "transfer",
+      paidAt: (payment?.paidAt ?? today()).slice(0, 10),
+      reference: payment?.reference ?? "",
     } as z.infer<typeof manualPaymentSchema>,
     ...validate(manualPaymentSchema),
-    onSubmit: ({ value }) => create.mutateAsync(value),
+    onSubmit: ({ value }) => save.mutateAsync(value),
   });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Banknote className="size-4" /> Tahsilat gir
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
+      {!payment && (
+        <DialogTrigger asChild>
+          <Button>
+            <Banknote className="size-4" /> Tahsilat gir
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Tahsilat kaydı</DialogTitle>
+          <DialogTitle>{payment ? "Tahsilatı düzelt" : "Tahsilat kaydı"}</DialogTitle>
           <DialogDescription>
-            Elden ya da hesabınıza geçen ödemeyi doğrudan işleyin.
+            {payment
+              ? "Daire, tutar ve tarih düzeltilebilir. Mahsuplaşması yapılmış bir yılın kaydı değiştirilemez."
+              : "Elden ya da hesabınıza geçen ödemeyi doğrudan işleyin."}
           </DialogDescription>
         </DialogHeader>
         <Form form={form} className="grid gap-4">
@@ -564,7 +627,7 @@ function ManualPaymentDialog() {
           </div>
           <DialogActions>
             <form.AppForm>
-              <form.Submit>Kaydet</form.Submit>
+              <form.Submit>{payment ? "Düzeltmeyi kaydet" : "Kaydet"}</form.Submit>
             </form.AppForm>
           </DialogActions>
         </Form>

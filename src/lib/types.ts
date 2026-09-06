@@ -151,6 +151,7 @@ export type Expense = {
   invoiceUrl: string | null;
   invoiceName: string | null;
   note: string | null;
+  recurringExpenseId: string | null;
   budgetTitle: string | null;
   allocations: { period: number; amountCents: number }[];
 };
