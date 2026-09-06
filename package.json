@@ -1,0 +1,57 @@
+{
+  "name": "saydam",
+  "version": "0.1.0",
+  "private": false,
+  "license": "SEE LICENSE IN LICENSE.md",
+  "description": "Şeffaf site aidat ve gider yönetimi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/merthanmerter/saydam.git"
+  },
+  "homepage": "https://github.com/merthanmerter/saydam#readme",
+  "bugs": {
+    "url": "https://github.com/merthanmerter/saydam/issues"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/serve.ts",
+    "build": "bun run scripts/build.ts",
+    "start": "NODE_ENV=production bun src/serve.ts",
+    "db:migrate": "bun run scripts/migrate.ts",
+    "db:seed": "bun run scripts/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "shots": "bun run scripts/shots.ts",
+    "db:check": "bun run scripts/check-migration.ts"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.102.8",
+    "@vercel/blob": "^2.8.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "lucide-react": "^1.40.0",
+    "radix-ui": "^1.6.7",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router": "^8.3.1",
+    "recharts": "3.8.0",
+    "resend": "^6.25.0",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.12",
+    "@types/bun": "^1.4.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "bun-plugin-tailwind": "^0.1.2",
+    "playwright": "1.62.1",
+    "sharp": "^0.35.4",
+    "tailwindcss": "^4.3.3",
+    "tw-animate-css": "^1.4.0",
+    "typescript": "^7.0.2"
+  }
+}
