@@ -1,10 +1,9 @@
 import { DoorOpen, Plus } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { DialogActions, EmptyState, Field, PageHeader, Stat } from "@/app/components/bits";
-import { Pager } from "@/app/components/pager";
+import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
 import { RowActions } from "@/app/components/row-actions";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -21,14 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   del,
   type Paged,
@@ -47,6 +38,7 @@ export default function Units() {
   const summary = units.summary;
   /** Düzenlenen daire; aynı form hem ekleme hem düzenleme için kullanılıyor. */
   const [editing, setEditing] = useState<Unit | null>(null);
+  const columns = useMemo(() => unitColumns(setEditing), []);
 
   return (
     <>
@@ -80,86 +72,91 @@ export default function Units() {
       </div>
 
       <div className="mt-6">
-        {units.items.length === 0 ? (
-          <EmptyState
-            icon={DoorOpen}
-            title="Henüz daire tanımlanmadı"
-            description="Blok, kapı numarası ve tapudaki arsa payıyla daireleri ekleyin."
-          />
-        ) : (
-          <>
-            <Card className="overflow-hidden py-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Daire</TableHead>
-                    <TableHead>Kat</TableHead>
-                    <TableHead className="text-right">Arsa payı</TableHead>
-                    <TableHead>Malik</TableHead>
-                    <TableHead>Kiracı</TableHead>
-                    <TableHead className="w-px">
-                      <span className="sr-only">İşlemler</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {units.items.map((unit) => (
-                    <UnitRow key={unit.id} unit={unit} onEdit={() => setEditing(unit)} />
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-            <Pager
-              page={units.page}
-              size={units.size}
-              count={units.items.length}
-              hasMore={units.hasMore}
-              onChange={units.setPage}
+        <DataTable
+          columns={columns}
+          rows={units.items}
+          paging={units}
+          empty={
+            <EmptyState
+              icon={DoorOpen}
+              title="Henüz daire tanımlanmadı"
+              description="Blok, kapı numarası ve tapudaki arsa payıyla daireleri ekleyin."
             />
-          </>
-        )}
+          }
+        />
       </div>
     </>
   );
 }
 
-function UnitRow({ unit, onEdit }: { unit: Unit; onEdit: () => void }) {
+const person = (name: string | null) =>
+  name ?? <span className="text-muted-foreground">—</span>;
+
+/**
+ * Sütunlar bileşenin dışında: satır işaretlemesi tek yerde ve okunur kalıyor.
+ * Düzenleme penceresini açan geri çağrı dışarıdan veriliyor.
+ */
+const unitColumns = (onEdit: (unit: Unit) => void): Column<Unit>[] => [
+  {
+    accessorKey: "no",
+    header: "Daire",
+    cell: ({ row }) => (
+      <span className="font-medium">
+        {row.original.block} {row.original.no}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "floor",
+    header: "Kat",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground text-sm">{row.original.floor ?? "—"}</span>
+    ),
+  },
+  {
+    accessorKey: "arsaPayi",
+    header: "Arsa payı",
+    meta: { align: "right" },
+    cell: ({ row }) => <span className="tabular">{number(row.original.arsaPayi)}</span>,
+  },
+  {
+    accessorKey: "ownerName",
+    header: "Malik",
+    cell: ({ row }) => <span className="text-sm">{person(row.original.ownerName)}</span>,
+  },
+  {
+    accessorKey: "tenantName",
+    header: "Kiracı",
+    cell: ({ row }) => <span className="text-sm">{person(row.original.tenantName)}</span>,
+  },
+  actionsColumn<Unit>(({ row }) => (
+    <UnitActions unit={row.original} onEdit={() => onEdit(row.original)} />
+  )),
+];
+
+function UnitActions({ unit, onEdit }: { unit: Unit; onEdit: () => void }) {
   const remove = useAction(() => del(`/units/${unit.id}`), {
     invalidate: ["/units", "/reports", "/site"],
     success: "Daire silindi",
   });
 
-  const person = (name: string | null) =>
-    name ?? <span className="text-muted-foreground">—</span>;
-
   return (
-    <TableRow>
-      <TableCell className="font-medium">
-        {unit.block} {unit.no}
-      </TableCell>
-      <TableCell className="text-muted-foreground text-sm">{unit.floor ?? "—"}</TableCell>
-      <TableCell className="tabular text-right">{number(unit.arsaPayi)}</TableCell>
-      <TableCell className="text-sm">{person(unit.ownerName)}</TableCell>
-      <TableCell className="text-sm">{person(unit.tenantName)}</TableCell>
-      <TableCell className="w-12 text-right">
-        <RowActions
-          actions={[
-            { label: "Düzenle", onSelect: onEdit },
-            {
-              label: "Sil",
-              destructive: true,
-              disabled: remove.isPending,
-              onSelect: () => remove.mutate(undefined),
-              confirm: {
-                title: "Daire silinsin mi?",
-                description: `${unit.block} ${unit.no} ve buna bağlı tahakkuk geçmişi kaldırılacak. Tahakkuk edilmiş bir dönemi varsa silme reddedilir.`,
-                confirmLabel: "Sil",
-              },
-            },
-          ]}
-        />
-      </TableCell>
-    </TableRow>
+    <RowActions
+      actions={[
+        { label: "Düzenle", onSelect: onEdit },
+        {
+          label: "Sil",
+          destructive: true,
+          disabled: remove.isPending,
+          onSelect: () => remove.mutate(undefined),
+          confirm: {
+            title: "Daire silinsin mi?",
+            description: `${unit.block} ${unit.no} ve buna bağlı tahakkuk geçmişi kaldırılacak. Tahakkuk edilmiş bir dönemi varsa silme reddedilir.`,
+            confirmLabel: "Sil",
+          },
+        },
+      ]}
+    />
   );
 }
 

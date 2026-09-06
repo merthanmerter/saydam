@@ -1,13 +1,12 @@
 import { FileText, Upload } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { DialogActions, EmptyState, Field, PageHeader } from "@/app/components/bits";
+import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
 import { FileUpload, type UploadedFile } from "@/app/components/inputs";
-import { Pager } from "@/app/components/pager";
 import { RowActions } from "@/app/components/row-actions";
 import { useSession } from "@/app/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -24,14 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { del, post, useAction, usePaged } from "@/lib/api";
 import { date } from "@/lib/format";
 import type { Doc } from "@/lib/types";
@@ -52,6 +43,7 @@ const size = (bytes: number) =>
 export default function Documents() {
   const { isAdmin } = useSession();
   const documents = usePaged<Doc>("/documents");
+  const columns = useMemo(() => docColumns(isAdmin), [isAdmin]);
 
   return (
     <>
@@ -61,87 +53,82 @@ export default function Documents() {
         actions={isAdmin && <UploadDialog />}
       />
 
-      {documents.items.length === 0 ? (
-        <EmptyState icon={FileText} title="Henüz doküman yüklenmedi" />
-      ) : (
-        <>
-          <Card className="overflow-hidden py-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Başlık</TableHead>
-                  <TableHead>Kategori</TableHead>
-                  <TableHead>Yükleyen</TableHead>
-                  <TableHead>Tarih</TableHead>
-                  <TableHead className="w-px">
-                    <span className="sr-only">İşlemler</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {documents.items.map((doc) => (
-                  <DocRow key={doc.id} doc={doc} isAdmin={isAdmin} />
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
-          <Pager
-            page={documents.page}
-            size={documents.size}
-            count={documents.items.length}
-            hasMore={documents.hasMore}
-            onChange={documents.setPage}
-          />
-        </>
-      )}
+      <DataTable
+        columns={columns}
+        rows={documents.items}
+        paging={documents}
+        empty={<EmptyState icon={FileText} title="Henüz doküman yüklenmedi" />}
+      />
     </>
   );
 }
 
-function DocRow({ doc, isAdmin }: { doc: Doc; isAdmin: boolean }) {
+const docColumns = (isAdmin: boolean): Column<Doc>[] => [
+  {
+    accessorKey: "title",
+    header: "Başlık",
+    cell: ({ row }) => (
+      <>
+        <div className="font-medium">{row.original.title}</div>
+        <div className="text-muted-foreground text-xs">
+          {row.original.fileName} · {size(row.original.sizeBytes)}
+        </div>
+      </>
+    ),
+  },
+  {
+    accessorKey: "category",
+    header: "Kategori",
+    cell: ({ row }) => (
+      <Badge variant="secondary">{CATEGORIES[row.original.category]}</Badge>
+    ),
+  },
+  {
+    accessorKey: "uploaderName",
+    header: "Yükleyen",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground text-sm">
+        {row.original.uploaderName ?? "—"}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "createdAt",
+    header: "Tarih",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground text-sm">{date(row.original.createdAt)}</span>
+    ),
+  },
+  actionsColumn<Doc>(({ row }) => <DocActions doc={row.original} isAdmin={isAdmin} />),
+];
+
+function DocActions({ doc, isAdmin }: { doc: Doc; isAdmin: boolean }) {
   const remove = useAction(() => del(`/documents/${doc.id}`), {
     invalidate: ["/documents"],
     success: "Doküman silindi",
   });
 
   return (
-    <TableRow>
-      <TableCell>
-        <div className="font-medium">{doc.title}</div>
-        <div className="text-muted-foreground text-xs">
-          {doc.fileName} · {size(doc.sizeBytes)}
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant="secondary">{CATEGORIES[doc.category]}</Badge>
-      </TableCell>
-      <TableCell className="text-muted-foreground text-sm">
-        {doc.uploaderName ?? "—"}
-      </TableCell>
-      <TableCell className="text-muted-foreground text-sm">{date(doc.createdAt)}</TableCell>
-      <TableCell className="text-right">
-        <RowActions
-          actions={[
-            { label: "Aç", href: doc.fileUrl },
-            ...(isAdmin
-              ? [
-                  {
-                    label: "Sil",
-                    destructive: true,
-                    disabled: remove.isPending,
-                    onSelect: () => remove.mutate(undefined),
-                    confirm: {
-                      title: "Doküman silinsin mi?",
-                      description: `"${doc.title}" kalıcı olarak kaldırılacak; sakinler artık erişemeyecek.`,
-                      confirmLabel: "Sil",
-                    },
-                  },
-                ]
-              : []),
-          ]}
-        />
-      </TableCell>
-    </TableRow>
+    <RowActions
+      actions={[
+        { label: "Aç", href: doc.fileUrl },
+        ...(isAdmin
+          ? [
+              {
+                label: "Sil",
+                destructive: true,
+                disabled: remove.isPending,
+                onSelect: () => remove.mutate(undefined),
+                confirm: {
+                  title: "Doküman silinsin mi?",
+                  description: `"${doc.title}" kalıcı olarak kaldırılacak; sakinler artık erişemeyecek.`,
+                  confirmLabel: "Sil",
+                },
+              },
+            ]
+          : []),
+      ]}
+    />
   );
 }
 

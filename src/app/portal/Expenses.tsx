@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { CalendarSync, FileText, Layers, Plus, Receipt } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   AmountInput,
   DialogActions,
@@ -9,14 +9,13 @@ import {
   Money,
   PageHeader,
 } from "@/app/components/bits";
+import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
 import { FileUpload, PeriodPicker, type UploadedFile } from "@/app/components/inputs";
-import { Pager } from "@/app/components/pager";
 import { RowActions } from "@/app/components/row-actions";
 import { expensesRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -33,14 +32,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { del, post, useAction, usePaged, useSuspenseApi } from "@/lib/api";
@@ -71,6 +62,8 @@ export default function Expenses() {
     startTransition(() => void navigate({ to: "/panel/giderler", search: { yil } }));
   const expenses = usePaged<Expense>(`/expenses?year=${year}`);
   const recurring = useSuspenseApi<{ recurring: Recurring[] }>("/recurring");
+  const expenseCols = useMemo(() => expenseColumns(isAdmin), [isAdmin]);
+  const recurringCols = useMemo(() => recurringColumns(isAdmin), [isAdmin]);
 
   return (
     <>
@@ -116,214 +109,224 @@ export default function Expenses() {
             </span>
           </div>
 
-          {expenses.items.length === 0 ? (
-            <EmptyState
-              icon={Receipt}
-              title="Bu yıl için gider kaydı yok"
-              description="Her harcama faturasıyla birlikte kaydedilir; sakinler kalem kalem görebilir."
-            />
-          ) : (
-            <>
-              <Card className="overflow-hidden py-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tarih</TableHead>
-                      <TableHead>Açıklama</TableHead>
-                      <TableHead>Tür</TableHead>
-                      <TableHead className="text-right">Tutar</TableHead>
-                      <TableHead>Aidata yansıma</TableHead>
-                      <TableHead>Fatura</TableHead>
-                      {isAdmin && (
-                        <TableHead className="w-px">
-                          <span className="sr-only">İşlemler</span>
-                        </TableHead>
-                      )}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {expenses.items.map((expense) => (
-                      <ExpenseRow key={expense.id} expense={expense} isAdmin={isAdmin} />
-                    ))}
-                  </TableBody>
-                </Table>
-              </Card>
-              <Pager
-                page={expenses.page}
-                size={expenses.size}
-                count={expenses.items.length}
-                hasMore={expenses.hasMore}
-                onChange={expenses.setPage}
+          <DataTable
+            columns={expenseCols}
+            rows={expenses.items}
+            paging={expenses}
+            empty={
+              <EmptyState
+                icon={Receipt}
+                title="Bu yıl için gider kaydı yok"
+                description="Her harcama faturasıyla birlikte kaydedilir; sakinler kalem kalem görebilir."
               />
-            </>
-          )}
+            }
+          />
         </TabsContent>
 
         <TabsContent value="budget" className="mt-4">
-          {recurring.data?.recurring.length === 0 ? (
-            <EmptyState
-              icon={CalendarSync}
-              title="Düzenli gider tanımlı değil"
-              description="Kapıcı maaşı, asansör bakımı, elektrik gibi her ay tekrar eden kalemleri buraya girin."
-            />
-          ) : (
-            <Card className="overflow-hidden py-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Kalem</TableHead>
-                    <TableHead>Kategori</TableHead>
-                    <TableHead>Paylaşım</TableHead>
-                    <TableHead className="text-right">Aylık tutar</TableHead>
-                    <TableHead>Geçerlilik</TableHead>
-                    {isAdmin && (
-                      <TableHead className="w-px">
-                        <span className="sr-only">İşlemler</span>
-                      </TableHead>
-                    )}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recurring.data?.recurring.map((item) => (
-                    <RecurringRow key={item.id} item={item} isAdmin={isAdmin} />
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-          )}
+          <DataTable
+            columns={recurringCols}
+            rows={recurring.data?.recurring ?? []}
+            empty={
+              <EmptyState
+                icon={CalendarSync}
+                title="Düzenli gider tanımlı değil"
+                description="Kapıcı maaşı, asansör bakımı, elektrik gibi her ay tekrar eden kalemleri buraya girin."
+              />
+            }
+          />
         </TabsContent>
       </Tabs>
     </>
   );
 }
 
-function ExpenseRow({ expense, isAdmin }: { expense: Expense; isAdmin: boolean }) {
+const expenseColumns = (isAdmin: boolean): Column<Expense>[] => [
+  {
+    accessorKey: "incurredOn",
+    header: "Tarih",
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap text-muted-foreground text-sm">
+        {date(row.original.incurredOn)}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "title",
+    header: "Açıklama",
+    cell: ({ row }) => (
+      <>
+        <div className="font-medium">{row.original.title}</div>
+        <div className="text-muted-foreground text-xs">
+          {[row.original.vendor, row.original.category, row.original.budgetTitle]
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
+      </>
+    ),
+  },
+  {
+    accessorKey: "kind",
+    header: "Tür",
+    cell: ({ row }) => (
+      <Badge variant={row.original.kind === "one_off" ? "outline" : "secondary"}>
+        {KIND_LABEL[row.original.kind]}
+      </Badge>
+    ),
+  },
+  {
+    accessorKey: "amountCents",
+    header: "Tutar",
+    meta: { align: "right" },
+    cell: ({ row }) => <Money cents={row.original.amountCents} className="font-medium" />,
+  },
+  {
+    id: "allocation",
+    header: "Aidata yansıma",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground text-xs">
+        {row.original.kind === "budgeted" ? (
+          "Bütçe kaleminden"
+        ) : row.original.installments > 1 ? (
+          <>
+            {row.original.installments} taksit
+            {row.original.surchargePct > 0 &&
+              ` · %${row.original.surchargePct} işletme payı`}
+            <div>
+              {periodLabel(row.original.period)} –{" "}
+              {periodLabel(row.original.allocations.at(-1)?.period ?? row.original.period)}
+            </div>
+          </>
+        ) : (
+          periodLabel(row.original.period)
+        )}
+      </span>
+    ),
+  },
+  {
+    id: "invoice",
+    header: "Fatura",
+    cell: ({ row }) =>
+      row.original.invoiceUrl ? (
+        <a
+          href={row.original.invoiceUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-sm underline underline-offset-2"
+        >
+          <FileText className="size-3.5" /> Görüntüle
+        </a>
+      ) : (
+        <span className="text-muted-foreground text-xs">—</span>
+      ),
+  },
+  ...(isAdmin
+    ? [actionsColumn<Expense>(({ row }) => <ExpenseActions expense={row.original} />)]
+    : []),
+];
+
+function ExpenseActions({ expense }: { expense: Expense }) {
   const remove = useAction(() => del(`/expenses/${expense.id}`), {
     invalidate: ["/expenses", "/budget", "/reports"],
     success: "Gider silindi",
   });
 
   return (
-    <TableRow>
-      <TableCell className="whitespace-nowrap text-muted-foreground text-sm">
-        {date(expense.incurredOn)}
-      </TableCell>
-      <TableCell>
-        <div className="font-medium">{expense.title}</div>
-        <div className="text-muted-foreground text-xs">
-          {[expense.vendor, expense.category, expense.budgetTitle]
-            .filter(Boolean)
-            .join(" · ")}
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant={expense.kind === "one_off" ? "outline" : "secondary"}>
-          {KIND_LABEL[expense.kind]}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-right">
-        <Money cents={expense.amountCents} className="font-medium" />
-      </TableCell>
-      <TableCell className="text-muted-foreground text-xs">
-        {expense.kind === "budgeted" ? (
-          "Bütçe kaleminden"
-        ) : expense.installments > 1 ? (
-          <>
-            {expense.installments} taksit
-            {expense.surchargePct > 0 && ` · %${expense.surchargePct} işletme payı`}
-            <div>
-              {periodLabel(expense.period)} –{" "}
-              {periodLabel(expense.allocations.at(-1)?.period ?? expense.period)}
-            </div>
-          </>
-        ) : (
-          periodLabel(expense.period)
-        )}
-      </TableCell>
-      <TableCell>
-        {expense.invoiceUrl ? (
-          <a
-            href={expense.invoiceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-sm underline underline-offset-2"
-          >
-            <FileText className="size-3.5" /> Görüntüle
-          </a>
-        ) : (
-          <span className="text-muted-foreground text-xs">—</span>
-        )}
-      </TableCell>
-      {isAdmin && (
-        <TableCell className="text-right">
-          <RowActions
-            actions={[
-              {
-                label: "Sil",
-                destructive: true,
-                disabled: remove.isPending || expense.kind === "system",
-                onSelect: () => remove.mutate(undefined),
-                confirm: {
-                  title: "Gider silinsin mi?",
-                  description: `"${expense.title}" (${money(expense.amountCents)}) kaydı ve faturası kaldırılacak; kasa bakiyesi buna göre güncellenir.`,
-                  confirmLabel: "Sil",
-                },
-              },
-            ]}
-          />
-        </TableCell>
-      )}
-    </TableRow>
+    <RowActions
+      actions={[
+        {
+          label: "Sil",
+          destructive: true,
+          disabled: remove.isPending || expense.kind === "system",
+          onSelect: () => remove.mutate(undefined),
+          confirm: {
+            title: "Gider silinsin mi?",
+            description: `"${expense.title}" (${money(expense.amountCents)}) kaydı ve faturası kaldırılacak; kasa bakiyesi buna göre güncellenir.`,
+            confirmLabel: "Sil",
+          },
+        },
+      ]}
+    />
   );
 }
 
-function RecurringRow({ item, isAdmin }: { item: Recurring; isAdmin: boolean }) {
+const recurringColumns = (isAdmin: boolean): Column<Recurring>[] => [
+  {
+    accessorKey: "title",
+    header: "Kalem",
+    cell: ({ row }) => (
+      <>
+        <div className="font-medium">{row.original.title}</div>
+        {row.original.note && (
+          <div className="text-muted-foreground text-xs">{row.original.note}</div>
+        )}
+      </>
+    ),
+  },
+  {
+    accessorKey: "category",
+    header: "Kategori",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground text-sm">{row.original.category}</span>
+    ),
+  },
+  {
+    id: "share",
+    header: "Paylaşım",
+    cell: ({ row }) => (
+      <div className="flex flex-wrap gap-1">
+        <Badge variant="outline">
+          {SHARE_METHODS.find((m) => m.id === row.original.shareMethod)?.label}
+        </Badge>
+        <Badge variant="outline">
+          {PAYERS.find((p) => p.id === row.original.payer)?.label}
+        </Badge>
+      </div>
+    ),
+  },
+  {
+    accessorKey: "amountCents",
+    header: "Aylık tutar",
+    meta: { align: "right" },
+    cell: ({ row }) => <Money cents={row.original.amountCents} className="font-medium" />,
+  },
+  {
+    id: "validity",
+    header: "Geçerlilik",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground text-sm">
+        {periodLabel(row.original.startPeriod)} –{" "}
+        {row.original.endPeriod ? periodLabel(row.original.endPeriod) : "süresiz"}
+      </span>
+    ),
+  },
+  ...(isAdmin
+    ? [actionsColumn<Recurring>(({ row }) => <RecurringActions item={row.original} />)]
+    : []),
+];
+
+function RecurringActions({ item }: { item: Recurring }) {
   const remove = useAction(() => del(`/recurring/${item.id}`), {
     invalidate: ["/recurring", "/budget"],
     success: "Kalem silindi",
   });
+
   return (
-    <TableRow>
-      <TableCell>
-        <div className="font-medium">{item.title}</div>
-        {item.note && <div className="text-muted-foreground text-xs">{item.note}</div>}
-      </TableCell>
-      <TableCell className="text-muted-foreground text-sm">{item.category}</TableCell>
-      <TableCell>
-        <div className="flex flex-wrap gap-1">
-          <Badge variant="outline">
-            {SHARE_METHODS.find((m) => m.id === item.shareMethod)?.label}
-          </Badge>
-          <Badge variant="outline">{PAYERS.find((p) => p.id === item.payer)?.label}</Badge>
-        </div>
-      </TableCell>
-      <TableCell className="text-right">
-        <Money cents={item.amountCents} className="font-medium" />
-      </TableCell>
-      <TableCell className="text-muted-foreground text-sm">
-        {periodLabel(item.startPeriod)} –{" "}
-        {item.endPeriod ? periodLabel(item.endPeriod) : "süresiz"}
-      </TableCell>
-      {isAdmin && (
-        <TableCell className="text-right">
-          <RowActions
-            actions={[
-              {
-                label: "Sil",
-                destructive: true,
-                disabled: remove.isPending,
-                onSelect: () => remove.mutate(undefined),
-                confirm: {
-                  title: "Bütçe kalemi silinsin mi?",
-                  description: `"${item.title}" bundan sonraki dönemlerde aidata yansımayacak. Geçmiş tahakkuklar değişmez.`,
-                  confirmLabel: "Sil",
-                },
-              },
-            ]}
-          />
-        </TableCell>
-      )}
-    </TableRow>
+    <RowActions
+      actions={[
+        {
+          label: "Sil",
+          destructive: true,
+          disabled: remove.isPending,
+          onSelect: () => remove.mutate(undefined),
+          confirm: {
+            title: "Bütçe kalemi silinsin mi?",
+            description: `"${item.title}" bundan sonraki dönemlerde aidata yansımayacak. Geçmiş tahakkuklar değişmez.`,
+            confirmLabel: "Sil",
+          },
+        },
+      ]}
+    />
   );
 }
 

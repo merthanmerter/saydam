@@ -1,12 +1,11 @@
 import { Copy, UserPlus, Users } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DialogActions, EmptyState, Field, PageHeader } from "@/app/components/bits";
-import { Pager } from "@/app/components/pager";
+import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
 import { RowActions } from "@/app/components/row-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -23,14 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { post, useAction, usePaged } from "@/lib/api";
 import { date } from "@/lib/format";
 import type { Resident } from "@/lib/types";
@@ -40,6 +31,7 @@ type InviteResult = { link: string; delivered: boolean; reason?: string };
 export default function Residents() {
   const residents = usePaged<Resident>("/residents");
   const [invite, setInvite] = useState<InviteResult | null>(null);
+  const columns = useMemo(() => residentColumns(setInvite), []);
 
   return (
     <>
@@ -51,43 +43,75 @@ export default function Residents() {
 
       {invite && <InviteBanner invite={invite} onClose={() => setInvite(null)} />}
 
-      {residents.items.length === 0 ? (
-        <EmptyState icon={Users} title="Henüz sakin eklenmedi" />
-      ) : (
-        <>
-          <Card className="overflow-hidden py-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ad soyad</TableHead>
-                  <TableHead>E-posta</TableHead>
-                  <TableHead>Daireler</TableHead>
-                  <TableHead>Rol</TableHead>
-                  <TableHead>Durum</TableHead>
-                  <TableHead className="w-px">
-                    <span className="sr-only">İşlemler</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {residents.items.map((resident) => (
-                  <ResidentRow key={resident.id} resident={resident} onInvite={setInvite} />
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
-          <Pager
-            page={residents.page}
-            size={residents.size}
-            count={residents.items.length}
-            hasMore={residents.hasMore}
-            onChange={residents.setPage}
-          />
-        </>
-      )}
+      <DataTable
+        columns={columns}
+        rows={residents.items}
+        paging={residents}
+        rowClassName={(r) => (r.status === "removed" ? "opacity-55" : undefined)}
+        empty={<EmptyState icon={Users} title="Henüz sakin eklenmedi" />}
+      />
     </>
   );
 }
+
+const residentColumns = (onInvite: (invite: InviteResult) => void): Column<Resident>[] => [
+  {
+    accessorKey: "fullName",
+    header: "Ad soyad",
+    cell: ({ row }) => (
+      <>
+        <span className="font-medium">{row.original.fullName}</span>
+        <div className="text-muted-foreground text-xs">
+          Eklendi: {date(row.original.createdAt)}
+        </div>
+      </>
+    ),
+  },
+  {
+    accessorKey: "email",
+    header: "E-posta",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground text-sm">{row.original.email}</span>
+    ),
+  },
+  {
+    id: "units",
+    header: "Daireler",
+    cell: ({ row }) => (
+      <span className="text-sm">
+        {row.original.units.length === 0
+          ? "—"
+          : row.original.units
+              .map((u) => `${u.block ? `${u.block} ` : ""}${u.no}`)
+              .join(", ")}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "role",
+    header: "Rol",
+    cell: ({ row }) => (
+      <Badge variant={row.original.role === "admin" ? "default" : "secondary"}>
+        {row.original.role === "admin" ? "Yönetim" : "Sakin"}
+      </Badge>
+    ),
+  },
+  {
+    accessorKey: "status",
+    header: "Durum",
+    cell: ({ row }) =>
+      row.original.status === "removed" ? (
+        <Badge variant="outline">Ayrıldı</Badge>
+      ) : row.original.hasPassword ? (
+        <Badge variant="outline">Aktif</Badge>
+      ) : (
+        <Badge variant="secondary">Davet bekliyor</Badge>
+      ),
+  },
+  actionsColumn<Resident>(({ row }) => (
+    <ResidentActions resident={row.original} onInvite={onInvite} />
+  )),
+];
 
 function InviteBanner({ invite, onClose }: { invite: InviteResult; onClose: () => void }) {
   return (
@@ -119,7 +143,7 @@ function InviteBanner({ invite, onClose }: { invite: InviteResult; onClose: () =
   );
 }
 
-function ResidentRow({
+function ResidentActions({
   resident,
   onInvite,
 }: {
@@ -136,61 +160,31 @@ function ResidentRow({
   });
 
   return (
-    <TableRow className={resident.status === "removed" ? "opacity-55" : undefined}>
-      <TableCell className="font-medium">
-        {resident.fullName}
-        <div className="text-muted-foreground text-xs">
-          Eklendi: {date(resident.createdAt)}
-        </div>
-      </TableCell>
-      <TableCell className="text-muted-foreground text-sm">{resident.email}</TableCell>
-      <TableCell className="text-sm">
-        {resident.units.length === 0
-          ? "—"
-          : resident.units.map((u) => `${u.block ? `${u.block} ` : ""}${u.no}`).join(", ")}
-      </TableCell>
-      <TableCell>
-        <Badge variant={resident.role === "admin" ? "default" : "secondary"}>
-          {resident.role === "admin" ? "Yönetim" : "Sakin"}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        {resident.status === "removed" ? (
-          <Badge variant="outline">Ayrıldı</Badge>
-        ) : resident.hasPassword ? (
-          <Badge variant="outline">Aktif</Badge>
-        ) : (
-          <Badge variant="secondary">Davet bekliyor</Badge>
-        )}
-      </TableCell>
-      <TableCell className="text-right">
-        <RowActions
-          actions={[
-            {
-              label: "Şifre sıfırla",
-              disabled: reset.isPending || resident.status === "removed",
-              onSelect: () => reset.mutate(undefined),
-              confirm: {
-                title: "Şifre sıfırlansın mı?",
-                description: `${resident.fullName} için yeni bir şifre belirleme bağlantısı oluşturulur; mevcut şifresi geçersiz olur.`,
-                confirmLabel: "Sıfırla",
-              },
-            },
-            {
-              label: "Siteden çıkar",
-              destructive: true,
-              disabled: remove.isPending || resident.status === "removed",
-              onSelect: () => remove.mutate(undefined),
-              confirm: {
-                title: "Siteden çıkarılsın mı?",
-                description: `${resident.fullName} artık giriş yapıp yeni işlem yapamaz. Geçmiş ödeme ve tahakkuk kayıtları silinmez, kendisi görüntülemeye devam eder.`,
-                confirmLabel: "Çıkar",
-              },
-            },
-          ]}
-        />
-      </TableCell>
-    </TableRow>
+    <RowActions
+      actions={[
+        {
+          label: "Şifre sıfırla",
+          disabled: reset.isPending || resident.status === "removed",
+          onSelect: () => reset.mutate(undefined),
+          confirm: {
+            title: "Şifre sıfırlansın mı?",
+            description: `${resident.fullName} için yeni bir şifre belirleme bağlantısı oluşturulur; mevcut şifresi geçersiz olur.`,
+            confirmLabel: "Sıfırla",
+          },
+        },
+        {
+          label: "Siteden çıkar",
+          destructive: true,
+          disabled: remove.isPending || resident.status === "removed",
+          onSelect: () => remove.mutate(undefined),
+          confirm: {
+            title: "Siteden çıkarılsın mı?",
+            description: `${resident.fullName} artık giriş yapıp yeni işlem yapamaz. Geçmiş ödeme ve tahakkuk kayıtları silinmez, kendisi görüntülemeye devam eder.`,
+            confirmLabel: "Çıkar",
+          },
+        },
+      ]}
+    />
   );
 }
 

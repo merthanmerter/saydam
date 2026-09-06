@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Banknote, CalendarClock, CreditCard, Landmark, Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   AmountInput,
@@ -11,8 +11,8 @@ import {
   PageHeader,
 } from "@/app/components/bits";
 import { ConfirmDialog } from "@/app/components/confirm";
+import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
 import { FileUpload, type UploadedFile } from "@/app/components/inputs";
-import { Pager } from "@/app/components/pager";
 import { RowActions } from "@/app/components/row-actions";
 import { paymentsRoute } from "@/app/router";
 import { useSession } from "@/app/session";
@@ -35,14 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   del,
   type Paged,
@@ -74,6 +66,7 @@ export default function Payments() {
   const payments = usePaged<Payment>("/payments");
   const balances = useSuspenseApi<Paged<Balance>>("/reports/balances?size=500");
   const site = useSuspenseApi<{ site: Site; onlinePayment: OnlinePayment }>("/site");
+  const columns = useMemo(() => paymentColumns(isAdmin), [isAdmin]);
   // Ödeme sağlayıcısı sonucu adres üzerinden döndürür.
   const { odeme } = paymentsRoute.useSearch();
   const navigate = useNavigate();
@@ -144,126 +137,129 @@ export default function Payments() {
         </Card>
       )}
 
-      {payments.items.length === 0 ? (
-        <EmptyState
-          icon={Wallet}
-          title="Henüz ödeme kaydı yok"
-          description={
-            isAdmin
-              ? "Sakinler ödeme yaptıkça burada listelenir."
-              : "Ödeme yaptığınızda burada görünecek."
-          }
-        />
-      ) : (
-        <>
-          <Card className="overflow-hidden py-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tarih</TableHead>
-                  <TableHead>Daire</TableHead>
-                  {isAdmin && <TableHead>Ödeyen</TableHead>}
-                  <TableHead>Yöntem</TableHead>
-                  <TableHead className="text-right">Tutar</TableHead>
-                  <TableHead>Durum</TableHead>
-                  {isAdmin && (
-                    <TableHead className="w-px">
-                      <span className="sr-only">İşlemler</span>
-                    </TableHead>
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payments.items.map((payment) => (
-                  <PaymentRow key={payment.id} payment={payment} isAdmin={isAdmin} />
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
-          <Pager
-            page={payments.page}
-            size={payments.size}
-            count={payments.items.length}
-            hasMore={payments.hasMore}
-            onChange={payments.setPage}
+      <DataTable
+        columns={columns}
+        rows={payments.items}
+        paging={payments}
+        empty={
+          <EmptyState
+            icon={Wallet}
+            title="Henüz ödeme kaydı yok"
+            description={
+              isAdmin
+                ? "Sakinler ödeme yaptıkça burada listelenir."
+                : "Ödeme yaptığınızda burada görünecek."
+            }
           />
-        </>
-      )}
+        }
+      />
     </>
   );
 }
 
-function PaymentRow({ payment, isAdmin }: { payment: Payment; isAdmin: boolean }) {
+/** Ödeyen ve işlem sütunlarını yalnızca yönetim görür. */
+const paymentColumns = (isAdmin: boolean): Column<Payment>[] => [
+  {
+    id: "date",
+    header: "Tarih",
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap text-muted-foreground text-sm">
+        {date(row.original.paidAt ?? row.original.createdAt)}
+      </span>
+    ),
+  },
+  {
+    id: "unit",
+    header: "Daire",
+    cell: ({ row }) => (
+      <span className="font-medium">
+        {row.original.block && `${row.original.block} `}
+        {row.original.no}
+      </span>
+    ),
+  },
+  ...(isAdmin
+    ? [
+        {
+          accessorKey: "payerName",
+          header: "Ödeyen",
+          cell: ({ row }) => (
+            <div className="text-muted-foreground text-sm">
+              {row.original.payerName ?? "—"}
+              {row.original.reference && (
+                <div className="text-xs">Açıklama: {row.original.reference}</div>
+              )}
+              {row.original.receiptUrl && (
+                <a
+                  href={row.original.receiptUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs underline underline-offset-2"
+                >
+                  Dekont
+                </a>
+              )}
+            </div>
+          ),
+        } satisfies Column<Payment>,
+      ]
+    : []),
+  {
+    accessorKey: "method",
+    header: "Yöntem",
+    cell: ({ row }) => <span className="text-sm">{METHOD_LABEL[row.original.method]}</span>,
+  },
+  {
+    accessorKey: "amountCents",
+    header: "Tutar",
+    meta: { align: "right" },
+    cell: ({ row }) => <Money cents={row.original.amountCents} className="font-medium" />,
+  },
+  {
+    accessorKey: "status",
+    header: "Durum",
+    cell: ({ row }) => (
+      <Badge variant={STATUS[row.original.status].variant}>
+        {STATUS[row.original.status].label}
+      </Badge>
+    ),
+  },
+  ...(isAdmin
+    ? [actionsColumn<Payment>(({ row }) => <PaymentActions payment={row.original} />)]
+    : []),
+];
+
+function PaymentActions({ payment }: { payment: Payment }) {
   const decide = useAction(
     (status: "confirmed" | "rejected") =>
       post(`/payments/${payment.id}/decide`, { status, note: null }),
     { invalidate: ["/payments", "/reports"], success: "Ödeme güncellendi" },
   );
 
+  if (payment.status !== "pending") return null;
+
   return (
-    <TableRow>
-      <TableCell className="whitespace-nowrap text-muted-foreground text-sm">
-        {date(payment.paidAt ?? payment.createdAt)}
-      </TableCell>
-      <TableCell className="font-medium">
-        {payment.block && `${payment.block} `}
-        {payment.no}
-      </TableCell>
-      {isAdmin && (
-        <TableCell className="text-muted-foreground text-sm">
-          {payment.payerName ?? "—"}
-          {payment.reference && (
-            <div className="text-xs">Açıklama: {payment.reference}</div>
-          )}
-          {payment.receiptUrl && (
-            <a
-              href={payment.receiptUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs underline underline-offset-2"
-            >
-              Dekont
-            </a>
-          )}
-        </TableCell>
-      )}
-      <TableCell className="text-sm">{METHOD_LABEL[payment.method]}</TableCell>
-      <TableCell className="text-right">
-        <Money cents={payment.amountCents} className="font-medium" />
-      </TableCell>
-      <TableCell>
-        <Badge variant={STATUS[payment.status].variant}>
-          {STATUS[payment.status].label}
-        </Badge>
-      </TableCell>
-      {isAdmin && (
-        <TableCell className="text-right">
-          {payment.status === "pending" && (
-            <RowActions
-              actions={[
-                {
-                  label: "Onayla",
-                  disabled: decide.isPending,
-                  onSelect: () => decide.mutate("confirmed"),
-                },
-                {
-                  label: "Reddet",
-                  destructive: true,
-                  disabled: decide.isPending,
-                  onSelect: () => decide.mutate("rejected"),
-                  confirm: {
-                    title: "Ödeme reddedilsin mi?",
-                    description:
-                      "Bildirim reddedilir, kasaya işlenmez ve daire borcu olduğu gibi kalır. Sakin yeniden bildirim yapabilir.",
-                    confirmLabel: "Reddet",
-                  },
-                },
-              ]}
-            />
-          )}
-        </TableCell>
-      )}
-    </TableRow>
+    <RowActions
+      actions={[
+        {
+          label: "Onayla",
+          disabled: decide.isPending,
+          onSelect: () => decide.mutate("confirmed"),
+        },
+        {
+          label: "Reddet",
+          destructive: true,
+          disabled: decide.isPending,
+          onSelect: () => decide.mutate("rejected"),
+          confirm: {
+            title: "Ödeme reddedilsin mi?",
+            description:
+              "Bildirim reddedilir, kasaya işlenmez ve daire borcu olduğu gibi kalır. Sakin yeniden bildirim yapabilir.",
+            confirmLabel: "Reddet",
+          },
+        },
+      ]}
+    />
   );
 }
 
