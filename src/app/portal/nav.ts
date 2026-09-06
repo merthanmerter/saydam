@@ -12,6 +12,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
+import { persisted } from "@/lib/store";
 
 export type NavItem = {
   /** Yönlendiricinin tanıdığı yollar; yanlış yazılan bir bağlantı derlenmez. */
@@ -52,22 +53,9 @@ export const NAV: NavItem[] = [
  * çizer. Bilinmiyorsa sakin varsayılır — fazladan satır göstermektense eksik
  * göstermek yeğdir.
  */
-const KEY = "saydam.admin";
+const role = persisted("saydam.admin", "0", (v): v is "0" | "1" => v === "0" || v === "1");
 
-export const rememberRole = (admin: boolean) => {
-  try {
-    localStorage.setItem(KEY, admin ? "1" : "0");
-  } catch {
-    // Gizli sekmede depolama kapalı olabilir; iskelet yine de çizilir.
-  }
-};
-
-export const lastKnownAdmin = () => {
-  try {
-    return localStorage.getItem(KEY) === "1";
-  } catch {
-    return false;
-  }
-};
+export const rememberRole = (admin: boolean) => role.set(admin ? "1" : "0");
+export const lastKnownAdmin = () => role.get() === "1";
 
 export const navFor = (admin: boolean) => NAV.filter((i) => !i.adminOnly || admin);

@@ -163,3 +163,23 @@ export const expenseSchema = z.object({
   surchargePct: percentField(100, "İşletme payı 0 ile 100 arasında olmalı"),
   note: z.string().trim().max(1000),
 });
+
+export const checkoutSchema = z.object({
+  unitId: z.string().min(1, "Daire seçin"),
+  amount: amountField,
+});
+
+export const restructureSchema = z.object({
+  installments: z.string().refine((v) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 1 && n <= 60;
+  }, "Taksit sayısı 1 ile 60 arasında olmalı"),
+  interestPct: percentField(100, "Vade farkı 0 ile 100 arasında olmalı"),
+  firstDueDate: z.string().min(1, "İlk taksit vadesi gerekli"),
+  note: z.string().trim().max(200),
+});
+
+export const switchSiteSchema = z.object({
+  siteId: z.string().min(1, "Site seçin"),
+  password: z.string().min(1, "O sitedeki şifrenizi girin"),
+});

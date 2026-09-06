@@ -1,3 +1,5 @@
+import { persisted } from "./store";
+
 /**
  * Görünüm modu. Kendi dairesi olan bir yönetici, portalı sakin gözüyle
  * görmek için bu modu değiştirir. Yetkiyi değiştirmez; yalnızca sunucudan
@@ -5,21 +7,9 @@
  */
 export type ViewMode = "admin" | "resident";
 
-const KEY = "saydam-view";
 export const VIEW_HEADER = "x-saydam-view";
 
-export const readView = (): ViewMode => {
-  try {
-    return localStorage.getItem(KEY) === "resident" ? "resident" : "admin";
-  } catch {
-    return "admin";
-  }
-};
+const isMode = (value: string): value is ViewMode =>
+  value === "admin" || value === "resident";
 
-export const writeView = (mode: ViewMode) => {
-  try {
-    localStorage.setItem(KEY, mode);
-  } catch {
-    /* gizli sekmede depolama kapalı olabilir */
-  }
-};
+export const view = persisted<ViewMode>("saydam-view", "admin", isMode);

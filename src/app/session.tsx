@@ -2,7 +2,7 @@ import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, type ReactNode, use, useCallback, useEffect } from "react";
 import { rememberRole } from "@/app/portal/nav";
 import { api } from "@/lib/api";
-import { type ViewMode, writeView } from "@/lib/view";
+import { type ViewMode, view } from "@/lib/view";
 
 type Me = {
   membershipId: string;
@@ -65,11 +65,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const client = useQueryClient();
   const { data, isPending, refetch } = useQuery(meQuery);
 
-  /** Mod değişince kapsamı daralan/genişleyen tüm sorgular yeniden çekilir. */
+  /**
+   * Mod değişince kapsamı daralan/genişleyen tüm sorgular yeniden çekilir.
+   *
+   * `clear()` değil `resetQueries()`: ilki önbelleği boşaltıp etkin sorguları
+   * yeniden çekmiyor, ekranda eski kapsamın verisi kalıyordu.
+   */
   const setView = useCallback(
     (mode: ViewMode) => {
-      writeView(mode);
-      client.clear();
+      view.set(mode);
+      void client.resetQueries();
     },
     [client],
   );

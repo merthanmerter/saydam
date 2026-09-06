@@ -25,10 +25,15 @@ import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export default function PortalLayout() {
-  // Oturum yönlendiricinin `beforeLoad` korumasında doğrulandı ve bağlamla
-  // buraya geldi: "yükleniyor" ya da "oturum yok" hâli tip düzeyinde yok.
-  const { me } = portalRoute.useRouteContext();
-  const { isAdmin, canAdmin, setView } = useSession();
+  /*
+   * Koruma `beforeLoad`ta çalıştı, yani oturum kesin var; bağlamdaki kopya
+   * bunu tip düzeyinde garanti ediyor. Ekranda ise sorgudan gelen değer
+   * kullanılıyor: bağlam bir anlık görüntü, görünüm modu değişince
+   * güncellenmez. İkisinden hangisi doluysa o.
+   */
+  const { me: fromGuard } = portalRoute.useRouteContext();
+  const { me: fromQuery, isAdmin, canAdmin, setView } = useSession();
+  const me = fromQuery ?? fromGuard;
   const location = useLocation();
   const client = useQueryClient();
   const [mobileOpen, setMobileOpen] = useState(false);

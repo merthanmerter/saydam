@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { readView, VIEW_HEADER } from "./view";
+import { VIEW_HEADER, view } from "./view";
 
 export class ApiError extends Error {
   constructor(
@@ -22,7 +22,7 @@ export class ApiError extends Error {
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...(init?.headers as object) };
   if (init?.body) headers["content-type"] = "application/json";
-  if (readView() === "resident") headers[VIEW_HEADER] = "resident";
+  if (view.get() === "resident") headers[VIEW_HEADER] = "resident";
 
   const response = await fetch(`/api${path}`, {
     credentials: "same-origin",

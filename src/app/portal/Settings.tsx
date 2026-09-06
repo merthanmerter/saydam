@@ -32,6 +32,7 @@ import {
   changePasswordSchema,
   duesRulesSchema,
   siteProfileSchema,
+  switchSiteSchema,
 } from "@/lib/schemas";
 import {
   type OnlinePayment,
@@ -608,15 +609,21 @@ type MySite = {
 function SiteSwitcher() {
   const { me } = useSession();
   const mine = useSuspenseApi<{ sites: MySite[] }>("/auth/my-sites");
-  const [siteId, setSiteId] = useState("");
-  const [password, setPassword] = useState("");
+  const others = (mine.data?.sites ?? []).filter((site) => site.siteId !== me?.siteId);
 
-  const others = (mine.data?.sites ?? []).filter((s) => s.siteId !== me?.siteId);
-
-  const switchSite = useAction(() => post("/auth/switch-site", { siteId, password }), {
-    onDone: () => {
-      window.location.href = "/panel";
+  const switchSite = useAction(
+    (value: z.infer<typeof switchSiteSchema>) => post("/auth/switch-site", value),
+    {
+      onDone: () => {
+        window.location.href = "/panel";
+      },
     },
+  );
+
+  const form = useAppForm({
+    defaultValues: { siteId: "", password: "" },
+    ...validate(switchSiteSchema),
+    onSubmit: ({ value }) => switchSite.mutateAsync(value),
   });
 
   if (others.length === 0) return null;
@@ -632,44 +639,41 @@ function SiteSwitcher() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            switchSite.mutate(undefined);
-          }}
-        >
-          <Field label="Site">
-            <Select value={siteId} onValueChange={setSiteId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Site seçin" />
-              </SelectTrigger>
-              <SelectContent>
-                {others.map((site) => (
-                  <SelectItem key={site.siteId} value={site.siteId}>
-                    {site.name}
-                    {site.city ? ` · ${site.city}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="O sitedeki şifreniz">
-            <Input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </Field>
-          <Button
-            type="submit"
-            disabled={switchSite.isPending || !siteId}
-            className="justify-self-start"
-          >
-            Bu siteye geç
-          </Button>
-        </form>
+        <Form form={form} className="grid gap-4">
+          <form.AppField name="siteId">
+            {(f) => (
+              <f.ChoiceField label="Site">
+                {(value, onChange) => (
+                  <Select value={value} onValueChange={onChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Site seçin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {others.map((site) => (
+                        <SelectItem key={site.siteId} value={site.siteId}>
+                          {site.name}
+                          {site.city ? ` · ${site.city}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </f.ChoiceField>
+            )}
+          </form.AppField>
+          <form.AppField name="password">
+            {(f) => (
+              <f.TextField
+                label="O sitedeki şifreniz"
+                type="password"
+                autoComplete="current-password"
+              />
+            )}
+          </form.AppField>
+          <form.AppForm>
+            <form.Submit className="justify-self-start">Bu siteye geç</form.Submit>
+          </form.AppForm>
+        </Form>
       </CardContent>
     </Card>
   );

@@ -1,16 +1,10 @@
+import { useStore } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { Banknote, CalendarClock, CreditCard, Landmark, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { z } from "zod";
-import {
-  AmountInput,
-  DialogActions,
-  EmptyState,
-  Field,
-  Money,
-  PageHeader,
-} from "@/app/components/bits";
+import { DialogActions, EmptyState, Field, Money, PageHeader } from "@/app/components/bits";
 import { ConfirmDialog } from "@/app/components/confirm";
 import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
 import { Form, useAppForm, validate } from "@/app/components/form";
@@ -29,7 +23,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -47,7 +40,12 @@ import {
   useSuspenseApi,
 } from "@/lib/api";
 import { date, fromCents, money, toCents, today } from "@/lib/format";
-import { manualPaymentSchema, paymentSchema } from "@/lib/schemas";
+import {
+  checkoutSchema,
+  manualPaymentSchema,
+  paymentSchema,
+  restructureSchema,
+} from "@/lib/schemas";
 import type {
   Balance,
   OnlinePayment,
@@ -385,17 +383,24 @@ function DeclareDialog({ units }: { units: Balance[] }) {
 
 function OnlinePayDialog({ units, feePct }: { units: Balance[]; feePct: number }) {
   const [open, setOpen] = useState(false);
-  const [unitId, setUnitId] = useState(units[0]?.id ?? "");
-  const [amount, setAmount] = useState(fromCents(Math.max(units[0]?.dueNowCents ?? 0, 0)));
 
-  const amountCents = toCents(amount);
-  /** Komisyon farkı borcun üstüne eklenir; sakin ne ödeyeceğini önden görür. */
-  const feeCents = feePct > 0 ? Math.round((amountCents * feePct) / 100) : 0;
-
-  const checkout = useAction<undefined, { paymentPageUrl: string }>(
-    () => post("/payments/checkout", { unitId, amountCents: toCents(amount) }),
+  const checkout = useAction<z.infer<typeof checkoutSchema>, { paymentPageUrl: string }>(
+    (value) =>
+      post("/payments/checkout", {
+        unitId: value.unitId,
+        amountCents: toCents(value.amount),
+      }),
     { onDone: (result) => window.location.assign(result.paymentPageUrl) },
   );
+
+  const form = useAppForm({
+    defaultValues: {
+      unitId: units[0]?.id ?? "",
+      amount: fromCents(Math.max(units[0]?.dueNowCents ?? 0, 0)),
+    },
+    ...validate(checkoutSchema),
+    onSubmit: ({ value }) => checkout.mutateAsync(value),
+  });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -412,47 +417,54 @@ function OnlinePayDialog({ units, feePct }: { units: Balance[]; feePct: number }
             bakiyeniz otomatik güncellenir.
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            checkout.mutate(undefined);
-          }}
-        >
-          <Field label="Daire">
-            <UnitSelect units={units} value={unitId} onChange={setUnitId} />
-          </Field>
-          <Field label="Tutar">
-            <AmountInput
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </Field>
+        <Form form={form} className="grid gap-4">
+          <form.AppField name="unitId">
+            {(f) => (
+              <f.ChoiceField label="Daire">
+                {(value, onChange) => (
+                  <UnitSelect units={units} value={value} onChange={onChange} />
+                )}
+              </f.ChoiceField>
+            )}
+          </form.AppField>
+          <form.AppField name="amount">
+            {(f) => <f.MoneyField label="Tutar" />}
+          </form.AppField>
 
-          {feeCents > 0 && (
-            <div className="grid gap-1 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
-              <div className="flex justify-between text-muted-foreground">
-                <span>Borcunuza işlenecek</span>
-                <Money cents={amountCents} />
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span>Kart komisyon farkı (%{feePct})</span>
-                <Money cents={feeCents} />
-              </div>
-              <div className="flex justify-between border-t pt-1 font-medium">
-                <span>Karttan çekilecek</span>
-                <Money cents={amountCents + feeCents} />
-              </div>
-            </div>
+          {/* Komisyon farkı borcun üstüne eklenir; sakin ne ödeyeceğini önden görür. */}
+          {feePct > 0 && (
+            <form.Subscribe selector={(state) => toCents(state.values.amount)}>
+              {(amountCents) => {
+                const feeCents = Math.round((amountCents * feePct) / 100);
+                if (feeCents <= 0) return null;
+                return (
+                  <div className="grid gap-1 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Borcunuza işlenecek</span>
+                      <Money cents={amountCents} />
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Kart komisyon farkı (%{feePct})</span>
+                      <Money cents={feeCents} />
+                    </div>
+                    <div className="flex justify-between border-t pt-1 font-medium">
+                      <span>Karttan çekilecek</span>
+                      <Money cents={amountCents + feeCents} />
+                    </div>
+                  </div>
+                );
+              }}
+            </form.Subscribe>
           )}
 
           <DialogActions>
-            <Button type="submit" disabled={checkout.isPending || !unitId}>
-              {checkout.isPending ? "Yönlendiriliyor…" : "Ödemeye geç"}
-            </Button>
+            <form.AppForm>
+              <form.Submit>
+                {checkout.isPending ? "Yönlendiriliyor…" : "Ödemeye geç"}
+              </form.Submit>
+            </form.AppForm>
           </DialogActions>
-        </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
@@ -572,11 +584,9 @@ function ManualPaymentDialog() {
 function RestructureDialog({ balances }: { balances: Balance[] }) {
   const [open, setOpen] = useState(false);
   const eligible = balances.filter((b) => b.balanceCents > 0 || b.hasRestructuring);
+  // Daire seçimi hangi kolun görüneceğini belirler (mevcut plan mı, yeni
+  // yapılandırma mı); form verisi değil ekran durumu.
   const [unitId, setUnitId] = useState(eligible[0]?.id ?? "");
-  const [installments, setInstallments] = useState("6");
-  const [interestPct, setInterestPct] = useState("0");
-  const [firstDueDate, setFirstDueDate] = useState(today());
-  const [note, setNote] = useState("");
 
   const unit = eligible.find((u) => u.id === unitId);
   const existing = useApi<{ restructurings: Restructuring[] }>(
@@ -587,26 +597,44 @@ function RestructureDialog({ balances }: { balances: Balance[] }) {
     (r) => r.unitId === unitId && r.status === "active",
   );
 
-  const query = new URLSearchParams({ unitId, installments, interestPct, firstDueDate });
-  const preview = useApi<RestructurePreview>(
-    `/restructurings/preview?${query}`,
-    open && unitId !== "" && !unit?.hasRestructuring && Number(installments) >= 1,
-  );
-
   const create = useAction(
-    () =>
+    (value: z.infer<typeof restructureSchema>) =>
       post("/restructurings", {
         unitId,
-        installments: Number(installments) || 1,
-        interestPct: Number(interestPct.replace(",", ".")) || 0,
-        firstDueDate,
-        note: note || null,
+        installments: Number(value.installments),
+        interestPct: Number(value.interestPct.replace(",", ".")),
+        firstDueDate: value.firstDueDate,
+        note: value.note || null,
       }),
     {
       invalidate: ["/restructurings", "/reports"],
       success: "Borç yapılandırıldı",
       onDone: () => setOpen(false),
     },
+  );
+
+  const form = useAppForm({
+    defaultValues: {
+      installments: "6",
+      interestPct: "0",
+      firstDueDate: today(),
+      note: "",
+    },
+    ...validate(restructureSchema),
+    onSubmit: ({ value }) => create.mutateAsync(value),
+  });
+
+  /* Önizleme, kullanıcı yazdıkça sunucudan gelir; form değerlerine abone. */
+  const draft = useStore(form.store, (state) => state.values);
+  const query = new URLSearchParams({
+    unitId,
+    installments: draft.installments,
+    interestPct: draft.interestPct,
+    firstDueDate: draft.firstDueDate,
+  });
+  const preview = useApi<RestructurePreview>(
+    `/restructurings/preview?${query}`,
+    open && unitId !== "" && !unit?.hasRestructuring && Number(draft.installments) >= 1,
   );
 
   const cancel = useAction(() => del(`/restructurings/${plan?.id}`), {
@@ -683,13 +711,7 @@ function RestructureDialog({ balances }: { balances: Balance[] }) {
               </DialogActions>
             </>
           ) : (
-            <form
-              className="grid gap-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                create.mutate(undefined);
-              }}
-            >
+            <Form form={form} className="grid gap-4">
               {unit && (
                 <p className="text-muted-foreground text-sm">
                   Yapılandırılacak borç: <Money cents={unit.balanceCents} /> (işlemiş
@@ -698,40 +720,34 @@ function RestructureDialog({ balances }: { balances: Balance[] }) {
               )}
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Taksit sayısı">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={installments}
-                    onChange={(e) => setInstallments(e.target.value)}
-                  />
-                </Field>
-                <Field label="Vade farkı (%)" hint="0 → yalnızca taksitlendirme">
-                  <Input
-                    inputMode="decimal"
-                    value={interestPct}
-                    onChange={(e) => setInterestPct(e.target.value)}
-                  />
-                </Field>
+                <form.AppField name="installments">
+                  {(f) => (
+                    <f.TextField label="Taksit sayısı" type="number" min={1} max={60} />
+                  )}
+                </form.AppField>
+                <form.AppField name="interestPct">
+                  {(f) => (
+                    <f.TextField
+                      label="Vade farkı (%)"
+                      hint="0 → yalnızca taksitlendirme"
+                      inputMode="decimal"
+                    />
+                  )}
+                </form.AppField>
               </div>
 
-              <Field label="İlk taksit vadesi">
-                <Input
-                  type="date"
-                  required
-                  value={firstDueDate}
-                  onChange={(e) => setFirstDueDate(e.target.value)}
-                />
-              </Field>
+              <form.AppField name="firstDueDate">
+                {(f) => <f.TextField label="İlk taksit vadesi" type="date" />}
+              </form.AppField>
 
-              <Field label="Not">
-                <Input
-                  placeholder="Sakinle görüşülerek kararlaştırıldı"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                />
-              </Field>
+              <form.AppField name="note">
+                {(f) => (
+                  <f.TextField
+                    label="Not"
+                    placeholder="Sakinle görüşülerek kararlaştırıldı"
+                  />
+                )}
+              </form.AppField>
 
               {preview.data && (
                 <div className="grid gap-1 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
@@ -759,11 +775,11 @@ function RestructureDialog({ balances }: { balances: Balance[] }) {
               )}
 
               <DialogActions>
-                <Button type="submit" disabled={create.isPending || !unitId}>
-                  Yapılandır
-                </Button>
+                <form.AppForm>
+                  <form.Submit disabled={!unitId}>Yapılandır</form.Submit>
+                </form.AppForm>
               </DialogActions>
-            </form>
+            </Form>
           )}
         </div>
       </DialogContent>
