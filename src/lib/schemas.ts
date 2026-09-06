@@ -105,7 +105,7 @@ export const changePasswordSchema = z.object({
 });
 
 /** Yüzde alanları metin tutar; virgül de nokta da kabul edilir. */
-const percentField = (max: number, message: string) =>
+export const percentField = (max: number, message: string) =>
   z
     .string()
     .trim()
@@ -124,4 +124,42 @@ export const duesRulesSchema = z.object({
   defaultShareMethod: z.enum(["esit", "arsa_payi"]),
   debtVisibility: z.enum(["yonetim", "herkes"]),
   accrualDay: z.string(),
+});
+
+/** Tutar alanı TL metni tutar; kuruşa çevirme çağıran tarafta. */
+export const amountField = z
+  .string()
+  .trim()
+  .refine(
+    (v) => Number(v.replace(/\./g, "").replace(",", ".")) > 0,
+    "Tutar sıfırdan büyük olmalı",
+  );
+
+export const paymentSchema = z.object({
+  unitId: z.string().min(1, "Daire seçin"),
+  amount: amountField,
+  paidAt: z.string().min(1, "Ödeme tarihi gerekli"),
+  reference: z.string().trim().max(200),
+});
+
+export const manualPaymentSchema = paymentSchema.extend({
+  method: z.enum(["transfer", "cash"]),
+});
+
+export const expenseSchema = z.object({
+  title: z.string().trim().min(2, "Açıklama en az 2 karakter").max(200),
+  category: z.string().trim().max(60),
+  vendor: z.string().trim().max(120),
+  amount: amountField,
+  incurredOn: z.string().min(1, "Fatura tarihi gerekli"),
+  period: z.number().int(),
+  startPeriod: z.number().int(),
+  shareMethod: z.enum(["esit", "arsa_payi"]),
+  payer: z.enum(["malik", "kiraci"]),
+  installments: z.string().refine((v) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 1 && n <= 120;
+  }, "Taksit sayısı 1 ile 120 arasında olmalı"),
+  surchargePct: percentField(100, "İşletme payı 0 ile 100 arasında olmalı"),
+  note: z.string().trim().max(1000),
 });

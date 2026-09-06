@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Banknote, CalendarClock, CreditCard, Landmark, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import type { z } from "zod";
 import {
   AmountInput,
   DialogActions,
@@ -12,6 +13,7 @@ import {
 } from "@/app/components/bits";
 import { ConfirmDialog } from "@/app/components/confirm";
 import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
+import { Form, useAppForm, validate } from "@/app/components/form";
 import { FileUpload, type UploadedFile } from "@/app/components/inputs";
 import { RowActions } from "@/app/components/row-actions";
 import { paymentsRoute } from "@/app/router";
@@ -45,6 +47,7 @@ import {
   useSuspenseApi,
 } from "@/lib/api";
 import { date, fromCents, money, toCents, today } from "@/lib/format";
+import { manualPaymentSchema, paymentSchema } from "@/lib/schemas";
 import type {
   Balance,
   OnlinePayment,
@@ -295,20 +298,14 @@ const UnitSelect = ({
 function DeclareDialog({ units }: { units: Balance[] }) {
   const [open, setOpen] = useState(false);
   const [receipt, setReceipt] = useState<UploadedFile | null>(null);
-  const [form, setForm] = useState({
-    unitId: units[0]?.id ?? "",
-    amount: fromCents(Math.max(units[0]?.dueNowCents ?? 0, 0)),
-    paidAt: today(),
-    reference: "",
-  });
 
   const declare = useAction(
-    () =>
+    (value: z.infer<typeof paymentSchema>) =>
       post("/payments/declare", {
-        unitId: form.unitId,
-        amountCents: toCents(form.amount),
-        paidAt: form.paidAt,
-        reference: form.reference || null,
+        unitId: value.unitId,
+        amountCents: toCents(value.amount),
+        paidAt: value.paidAt,
+        reference: value.reference || null,
         receiptUrl: receipt?.url ?? null,
       }),
     {
@@ -320,6 +317,17 @@ function DeclareDialog({ units }: { units: Balance[] }) {
       },
     },
   );
+
+  const form = useAppForm({
+    defaultValues: {
+      unitId: units[0]?.id ?? "",
+      amount: fromCents(Math.max(units[0]?.dueNowCents ?? 0, 0)),
+      paidAt: today(),
+      reference: "",
+    },
+    ...validate(paymentSchema),
+    onSubmit: ({ value }) => declare.mutateAsync(value),
+  });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -335,43 +343,27 @@ function DeclareDialog({ units }: { units: Balance[] }) {
             Yönetim onayladığında ödemeniz kasaya ve bakiyenize işlenir.
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            declare.mutate(undefined);
-          }}
-        >
-          <Field label="Daire">
-            <UnitSelect
-              units={units}
-              value={form.unitId}
-              onChange={(unitId) => setForm({ ...form, unitId })}
-            />
-          </Field>
+        <Form form={form} className="grid gap-4">
+          <form.AppField name="unitId">
+            {(f) => (
+              <f.ChoiceField label="Daire">
+                {(value, onChange) => (
+                  <UnitSelect units={units} value={value} onChange={onChange} />
+                )}
+              </f.ChoiceField>
+            )}
+          </form.AppField>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Tutar">
-              <AmountInput
-                required
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              />
-            </Field>
-            <Field label="Ödeme tarihi">
-              <Input
-                type="date"
-                required
-                value={form.paidAt}
-                onChange={(e) => setForm({ ...form, paidAt: e.target.value })}
-              />
-            </Field>
+            <form.AppField name="amount">
+              {(f) => <f.MoneyField label="Tutar" />}
+            </form.AppField>
+            <form.AppField name="paidAt">
+              {(f) => <f.TextField label="Ödeme tarihi" type="date" />}
+            </form.AppField>
           </div>
-          <Field label="Açıklama / referans">
-            <Input
-              value={form.reference}
-              onChange={(e) => setForm({ ...form, reference: e.target.value })}
-            />
-          </Field>
+          <form.AppField name="reference">
+            {(f) => <f.TextField label="Açıklama / referans" />}
+          </form.AppField>
           <Field label="Dekont (isteğe bağlı)">
             <FileUpload
               folder="dekontlar"
@@ -381,11 +373,11 @@ function DeclareDialog({ units }: { units: Balance[] }) {
             />
           </Field>
           <DialogActions>
-            <Button type="submit" disabled={declare.isPending || !form.unitId}>
-              Bildir
-            </Button>
+            <form.AppForm>
+              <form.Submit>Bildir</form.Submit>
+            </form.AppForm>
           </DialogActions>
-        </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
@@ -469,22 +461,15 @@ function OnlinePayDialog({ units, feePct }: { units: Balance[]; feePct: number }
 function ManualPaymentDialog() {
   const [open, setOpen] = useState(false);
   const balances = useSuspenseApi<Paged<Balance>>("/reports/balances?size=500");
-  const [form, setForm] = useState({
-    unitId: "",
-    amount: "",
-    method: "transfer" as "transfer" | "cash",
-    paidAt: today(),
-    reference: "",
-  });
 
   const create = useAction(
-    () =>
+    (value: z.infer<typeof manualPaymentSchema>) =>
       post("/payments", {
-        unitId: form.unitId,
-        amountCents: toCents(form.amount),
-        method: form.method,
-        paidAt: form.paidAt,
-        reference: form.reference || null,
+        unitId: value.unitId,
+        amountCents: toCents(value.amount),
+        method: value.method,
+        paidAt: value.paidAt,
+        reference: value.reference || null,
         note: null,
       }),
     {
@@ -493,6 +478,18 @@ function ManualPaymentDialog() {
       onDone: () => setOpen(false),
     },
   );
+
+  const form = useAppForm({
+    defaultValues: {
+      unitId: "",
+      amount: "",
+      method: "transfer",
+      paidAt: today(),
+      reference: "",
+    } as z.infer<typeof manualPaymentSchema>,
+    ...validate(manualPaymentSchema),
+    onSubmit: ({ value }) => create.mutateAsync(value),
+  });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -508,68 +505,57 @@ function ManualPaymentDialog() {
             Elden ya da hesabınıza geçen ödemeyi doğrudan işleyin.
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            create.mutate(undefined);
-          }}
-        >
-          <Field label="Daire">
-            <UnitSelect
-              withResident
-              units={balances.data.items ?? []}
-              value={form.unitId}
-              onChange={(unitId) => setForm({ ...form, unitId })}
-            />
-          </Field>
+        <Form form={form} className="grid gap-4">
+          <form.AppField name="unitId">
+            {(f) => (
+              <f.ChoiceField label="Daire">
+                {(value, onChange) => (
+                  <UnitSelect
+                    withResident
+                    units={balances.data.items ?? []}
+                    value={value}
+                    onChange={onChange}
+                  />
+                )}
+              </f.ChoiceField>
+            )}
+          </form.AppField>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Tutar">
-              <AmountInput
-                required
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              />
-            </Field>
-            <Field label="Yöntem">
-              <Select
-                value={form.method}
-                onValueChange={(method) =>
-                  setForm({ ...form, method: method as "transfer" | "cash" })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="transfer">Havale/EFT</SelectItem>
-                  <SelectItem value="cash">Nakit</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
+            <form.AppField name="amount">
+              {(f) => <f.MoneyField label="Tutar" />}
+            </form.AppField>
+            <form.AppField name="method">
+              {(f) => (
+                <f.ChoiceField label="Yöntem">
+                  {(value, onChange) => (
+                    <Select value={value} onValueChange={onChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="transfer">Havale/EFT</SelectItem>
+                        <SelectItem value="cash">Nakit</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </f.ChoiceField>
+              )}
+            </form.AppField>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Ödeme tarihi">
-              <Input
-                type="date"
-                required
-                value={form.paidAt}
-                onChange={(e) => setForm({ ...form, paidAt: e.target.value })}
-              />
-            </Field>
-            <Field label="Açıklama">
-              <Input
-                value={form.reference}
-                onChange={(e) => setForm({ ...form, reference: e.target.value })}
-              />
-            </Field>
+            <form.AppField name="paidAt">
+              {(f) => <f.TextField label="Ödeme tarihi" type="date" />}
+            </form.AppField>
+            <form.AppField name="reference">
+              {(f) => <f.TextField label="Açıklama" />}
+            </form.AppField>
           </div>
           <DialogActions>
-            <Button type="submit" disabled={create.isPending || !form.unitId}>
-              Kaydet
-            </Button>
+            <form.AppForm>
+              <form.Submit>Kaydet</form.Submit>
+            </form.AppForm>
           </DialogActions>
-        </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

@@ -1,15 +1,10 @@
 import { useNavigate } from "@tanstack/react-router";
 import { CalendarSync, FileText, Layers, Plus, Receipt } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
-import {
-  AmountInput,
-  DialogActions,
-  EmptyState,
-  Field,
-  Money,
-  PageHeader,
-} from "@/app/components/bits";
+import type { z } from "zod";
+import { DialogActions, EmptyState, Field, Money, PageHeader } from "@/app/components/bits";
 import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
+import { Form, useAppForm, validate } from "@/app/components/form";
 import { FileUpload, PeriodPicker, type UploadedFile } from "@/app/components/inputs";
 import { RowActions } from "@/app/components/row-actions";
 import { expensesRoute } from "@/app/router";
@@ -24,7 +19,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -33,9 +27,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { del, post, useAction, usePaged, useSuspenseApi } from "@/lib/api";
 import { currentPeriod, date, money, periodLabel, toCents, today } from "@/lib/format";
+import { expenseSchema } from "@/lib/schemas";
 import {
   type Expense,
   PAYERS,
@@ -347,91 +341,80 @@ function AddExpenseDialog({ recurring }: { recurring: Recurring[] }) {
   const [budgetLine, setBudgetLine] = useState("new");
   const [invoice, setInvoice] = useState<UploadedFile | null>(null);
 
-  const empty = {
-    title: "",
-    category: "genel",
-    vendor: "",
-    amount: "",
-    incurredOn: today(),
-    period: currentPeriod(),
-    startPeriod: currentPeriod(),
-    shareMethod: "arsa_payi" as ShareMethod,
-    payer: "malik" as Payer,
-    installments: "1",
-    surchargePct: "0",
-    note: "",
-  };
-  const [form, setForm] = useState(empty);
-  const set =
-    <K extends keyof typeof empty>(key: K) =>
-    (value: (typeof empty)[K]) =>
-      setForm((previous) => ({ ...previous, [key]: value }));
-
   /** Yeni bütçe kalemi tanımlanıyor: fatura beklenmez, kayıt plana yazılır. */
   const definingLine = kind === "recurring" && budgetLine === "new";
   const oneOff = kind === "one_off";
-
-  const amountCents = toCents(form.amount);
-  const installments = Math.max(1, Number(form.installments) || 1);
-  const surcharge = Math.max(0, Number(form.surchargePct.replace(",", ".")) || 0);
-  const perInstallment =
-    Number.isFinite(amountCents) && amountCents > 0
-      ? Math.round((amountCents * (1 + surcharge / 100)) / installments)
-      : 0;
-
-  const reset = () => {
-    setForm(empty);
-    setInvoice(null);
-    setBudgetLine("new");
-  };
+  const ready = definingLine || invoice !== null;
 
   const create = useAction(
-    () =>
-      definingLine
+    (value: z.infer<typeof expenseSchema>) => {
+      const amountCents = toCents(value.amount);
+      const installments = Number(value.installments);
+      const surcharge = Number(value.surchargePct.replace(",", "."));
+      return definingLine
         ? post("/recurring", {
-            title: form.title,
-            category: form.category,
+            title: value.title,
+            category: value.category,
             amountCents,
-            shareMethod: form.shareMethod,
-            payer: form.payer,
-            startPeriod: form.startPeriod,
+            shareMethod: value.shareMethod,
+            payer: value.payer,
+            startPeriod: value.startPeriod,
             endPeriod: null,
-            note: form.note || null,
+            note: value.note || null,
           })
         : post("/expenses", {
-            title: form.title,
-            category: form.category,
-            vendor: form.vendor || null,
+            title: value.title,
+            category: value.category,
+            vendor: value.vendor || null,
             amountCents,
-            incurredOn: form.incurredOn,
-            period: form.period,
+            incurredOn: value.incurredOn,
+            period: value.period,
             recurringExpenseId: oneOff ? null : budgetLine,
-            shareMethod: form.shareMethod,
-            payer: form.payer,
+            shareMethod: value.shareMethod,
+            payer: value.payer,
             installments: oneOff ? installments : 1,
             surchargePct: oneOff ? surcharge : 0,
             invoiceUrl: invoice?.url,
             invoiceName: invoice?.name,
-            note: form.note || null,
-          }),
+            note: value.note || null,
+          });
+    },
     {
       invalidate: ["/recurring", "/expenses", "/budget", "/reports"],
       success: definingLine ? "Bütçe kalemi eklendi" : "Gider kaydedildi",
-      onDone: () => {
-        setOpen(false);
-        reset();
-      },
+      onDone: () => setOpen(false),
     },
   );
 
-  const ready = definingLine || invoice !== null;
+  const form = useAppForm({
+    defaultValues: {
+      title: "",
+      category: "genel",
+      vendor: "",
+      amount: "",
+      incurredOn: today(),
+      period: currentPeriod(),
+      startPeriod: currentPeriod(),
+      shareMethod: "arsa_payi",
+      payer: "malik",
+      installments: "1",
+      surchargePct: "0",
+      note: "",
+    } as z.infer<typeof expenseSchema>,
+    ...validate(expenseSchema),
+    onSubmit: ({ value }) => create.mutateAsync(value),
+  });
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next) reset();
+        if (next) {
+          form.reset();
+          setInvoice(null);
+          setBudgetLine("new");
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -448,13 +431,9 @@ function AddExpenseDialog({ recurring }: { recurring: Recurring[] }) {
               : "Fatura zorunludur. Bir bütçe kalemine mahsup edilen gider aidata tekrar yansımaz."}
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (ready) create.mutate(undefined);
-          }}
-        >
+        <Form form={form} className="grid gap-4">
+          {/* Tür ve bütçe kalemi hangi alanların görüneceğini belirler; form
+              verisi değil, ekran durumudur. */}
           <Field label="Tür">
             <Tabs
               value={kind}
@@ -497,98 +476,108 @@ function AddExpenseDialog({ recurring }: { recurring: Recurring[] }) {
             </Field>
           )}
 
-          <Field label={definingLine ? "Kalem adı" : "Açıklama"}>
-            <Input
-              required
-              placeholder={definingLine ? "Kapıcı maaşı" : "Çatı yalıtım işi"}
-              value={form.title}
-              onChange={(e) => set("title")(e.target.value)}
-            />
-          </Field>
+          <form.AppField name="title">
+            {(f) => (
+              <f.TextField
+                label={definingLine ? "Kalem adı" : "Açıklama"}
+                placeholder={definingLine ? "Kapıcı maaşı" : "Çatı yalıtım işi"}
+              />
+            )}
+          </form.AppField>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={definingLine ? "Aylık tutar" : "Tutar"}>
-              <AmountInput
-                required
-                value={form.amount}
-                onChange={(e) => set("amount")(e.target.value)}
-              />
-            </Field>
+            <form.AppField name="amount">
+              {(f) => <f.MoneyField label={definingLine ? "Aylık tutar" : "Tutar"} />}
+            </form.AppField>
             {definingLine ? (
-              <Field label="Kategori">
-                <Input
-                  value={form.category}
-                  onChange={(e) => set("category")(e.target.value)}
-                />
-              </Field>
+              <form.AppField name="category">
+                {(f) => <f.TextField label="Kategori" />}
+              </form.AppField>
             ) : (
-              <Field label="Fatura tarihi">
-                <Input
-                  type="date"
-                  required
-                  value={form.incurredOn}
-                  onChange={(e) => set("incurredOn")(e.target.value)}
-                />
-              </Field>
+              <form.AppField name="incurredOn">
+                {(f) => <f.TextField label="Fatura tarihi" type="date" />}
+              </form.AppField>
             )}
           </div>
 
           {!definingLine && (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Tedarikçi">
-                <Input
-                  value={form.vendor}
-                  onChange={(e) => set("vendor")(e.target.value)}
-                />
-              </Field>
-              <Field label="Kategori">
-                <Input
-                  value={form.category}
-                  onChange={(e) => set("category")(e.target.value)}
-                />
-              </Field>
+              <form.AppField name="vendor">
+                {(f) => <f.TextField label="Tedarikçi" />}
+              </form.AppField>
+              <form.AppField name="category">
+                {(f) => <f.TextField label="Kategori" />}
+              </form.AppField>
             </div>
           )}
 
-          <Field label={definingLine ? "Başlangıç dönemi" : "Yansıtılacak dönem"}>
-            <PeriodPicker
-              value={definingLine ? form.startPeriod : form.period}
-              onChange={definingLine ? set("startPeriod") : set("period")}
-            />
-          </Field>
+          <form.AppField name={definingLine ? "startPeriod" : "period"}>
+            {(f) => (
+              <f.ChoiceField
+                label={definingLine ? "Başlangıç dönemi" : "Yansıtılacak dönem"}
+              >
+                {() => (
+                  <PeriodPicker
+                    value={f.state.value as unknown as number}
+                    onChange={(period) => f.handleChange(period as never)}
+                  />
+                )}
+              </f.ChoiceField>
+            )}
+          </form.AppField>
 
           {(definingLine || oneOff) && (
             <>
-              <ShareMethodField value={form.shareMethod} onChange={set("shareMethod")} />
-              <PayerField value={form.payer} onChange={set("payer")} />
+              <form.AppField name="shareMethod">
+                {(f) => (
+                  <ShareMethodField
+                    value={f.state.value}
+                    onChange={(next) => f.handleChange(next)}
+                  />
+                )}
+              </form.AppField>
+              <form.AppField name="payer">
+                {(f) => (
+                  <PayerField
+                    value={f.state.value}
+                    onChange={(next) => f.handleChange(next)}
+                  />
+                )}
+              </form.AppField>
             </>
           )}
 
           {oneOff && (
             <div className="grid gap-4 rounded-lg border bg-muted/40 p-3 sm:grid-cols-2">
-              <Field label="Kaç aya bölünsün?">
-                <Input
-                  type="number"
-                  min={1}
-                  max={120}
-                  value={form.installments}
-                  onChange={(e) => set("installments")(e.target.value)}
-                />
-              </Field>
-              <Field label="İşletme / sermaye payı (%)">
-                <Input
-                  inputMode="decimal"
-                  value={form.surchargePct}
-                  onChange={(e) => set("surchargePct")(e.target.value)}
-                />
-              </Field>
-              {perInstallment > 0 && (
-                <p className="text-muted-foreground text-xs sm:col-span-2">
-                  {installments > 1 ? `${installments} ay boyunca ` : ""}aylık{" "}
-                  <Money cents={perInstallment} className="font-medium text-foreground" />{" "}
-                  aidata eklenir · {periodLabel(form.period)} döneminden itibaren
-                </p>
-              )}
+              <form.AppField name="installments">
+                {(f) => (
+                  <f.TextField label="Kaç aya bölünsün?" type="number" min={1} max={120} />
+                )}
+              </form.AppField>
+              <form.AppField name="surchargePct">
+                {(f) => (
+                  <f.TextField label="İşletme / sermaye payı (%)" inputMode="decimal" />
+                )}
+              </form.AppField>
+              <form.Subscribe selector={(state) => state.values}>
+                {(values) => {
+                  const cents = toCents(values.amount);
+                  const count = Math.max(1, Number(values.installments) || 1);
+                  const pct = Math.max(
+                    0,
+                    Number(values.surchargePct.replace(",", ".")) || 0,
+                  );
+                  const per = cents > 0 ? Math.round((cents * (1 + pct / 100)) / count) : 0;
+                  if (per === 0) return null;
+                  return (
+                    <p className="text-muted-foreground text-xs sm:col-span-2">
+                      {count > 1 ? `${count} ay boyunca ` : ""}aylık{" "}
+                      <Money cents={per} className="font-medium text-foreground" /> aidata
+                      eklenir · {periodLabel(values.period)} döneminden itibaren
+                    </p>
+                  );
+                }}
+              </form.Subscribe>
             </div>
           )}
 
@@ -603,24 +592,22 @@ function AddExpenseDialog({ recurring }: { recurring: Recurring[] }) {
             </Field>
           )}
 
-          <Field label="Not">
-            <Textarea
-              rows={2}
-              value={form.note}
-              onChange={(e) => set("note")(e.target.value)}
-            />
-          </Field>
+          <form.AppField name="note">
+            {(f) => <f.TextAreaField label="Not" rows={2} />}
+          </form.AppField>
 
           <DialogActions>
-            <Button type="submit" disabled={create.isPending || !ready}>
-              {definingLine
-                ? "Bütçe kalemi tanımla"
-                : ready
-                  ? "Gideri kaydet"
-                  : "Önce fatura yükleyin"}
-            </Button>
+            <form.AppForm>
+              <form.Submit disabled={!ready}>
+                {definingLine
+                  ? "Bütçe kalemi tanımla"
+                  : ready
+                    ? "Gideri kaydet"
+                    : "Önce fatura yükleyin"}
+              </form.Submit>
+            </form.AppForm>
           </DialogActions>
-        </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
