@@ -6,30 +6,32 @@
  * "sütun ekleyen ifade, o sütuna değinen ifadeden sonra geliyor" türü bir hata
  * ancak eski bir kopya üzerinde ortaya çıkar.
  *
- * Eski sürümler `db/snapshots/` altında duruyor — git geçmişinden değil, çünkü
- * geçmiş yeniden yazılabiliyor ve bu ağın ona bağlı olmaması gerekir. Şema
- * değişikliğini her dağıttığınızda `bun run db:snapshot` çalıştırın.
+ * Eski sürümler `db/snapshots/` altında birer düz SQL dosyası — git geçmişinde
+ * değil, çünkü geçmiş yeniden yazılabiliyor ve bu ağın ona bağlı olmaması
+ * gerekir. Senaryolar geçtiğinde şemanın o anki hâli, sondaki görüntüden
+ * farklıysa, yeni bir görüntü olarak yazılır: ayrı bir komut olsaydı
+ * unutulurdu ve kaçırılan her sürüm, göçün hiç denenmediği bir üretim
+ * veritabanı demek olurdu.
  *
  * Kullanım:  bun run db:check
  */
 import { Glob, SQL } from "bun";
 import { SCHEMA_SQL } from "../src/server/schema.ts";
 
+const DIR = "db/snapshots";
 const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
 if (!url) throw new Error("DATABASE_URL gerekli");
 
 const admin = new SQL({ url, max: 1 });
 const dbUrl = (name: string) => url.replace(/\/[^/?]+(\?|$)/, `/${name}$1`);
 
-/** Her anlık görüntü bir "eski veritabanı" senaryosudur; adlarına göre sıralı. */
-const files = [...new Glob("*.sql").scanSync("db/snapshots")].sort();
-
+const files = [...new Glob("*.sql").scanSync(DIR)].sort();
 const scenarios = [
   { name: "sıfır veritabanı", seed: null as string | null },
   ...(await Promise.all(
     files.map(async (file) => ({
       name: `eski şema ${file.replace(/\.sql$/, "")}`,
-      seed: await Bun.file(`db/snapshots/${file}`).text(),
+      seed: await Bun.file(`${DIR}/${file}`).text(),
     })),
   )),
 ];
@@ -53,10 +55,16 @@ for (const { name, seed } of scenarios) {
     await admin.unsafe(`drop database ${db}`);
   }
 }
-
 await admin.close();
+
 if (failed) {
   console.log(`\n${failed} senaryo başarısız`);
   process.exit(1);
 }
 console.log(`\n${scenarios.length} senaryonun tamamı geçti`);
+
+if (scenarios.at(-1)?.seed !== SCHEMA_SQL) {
+  const file = `${DIR}/${String(files.length + 1).padStart(3, "0")}-${new Date().toISOString().slice(0, 10)}.sql`;
+  await Bun.write(file, SCHEMA_SQL);
+  console.log(`+ yeni anlık görüntü: ${file}`);
+}

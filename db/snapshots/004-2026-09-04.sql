@@ -1,4 +1,3 @@
--- 2026-09-04 tarihindeki şema (üretimde bu hâlde olan veritabanları için)
 
 -- ─── Kimlik ────────────────────────────────────────────────────────────────
 create table if not exists users (

@@ -23,8 +23,7 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "shots": "bun run scripts/shots.ts",
-    "db:check": "bun run scripts/check-migration.ts",
-    "db:snapshot": "bun run scripts/snapshot-schema.ts"
+    "db:check": "bun run scripts/check-migration.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",
