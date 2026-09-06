@@ -76,3 +76,52 @@ export const unitSchema = z.object({
   ownerMembershipId: z.string(),
   tenantMembershipId: z.string(),
 });
+
+export const siteProfileSchema = z.object({
+  name: z.string().trim().min(2, "Site adı en az 2 karakter").max(120),
+  city: z.string().trim().max(80),
+  address: z.string().trim().max(300),
+});
+
+/**
+ * IBAN: 26 karakterli Türkiye biçimi, boşluklara izin verilir. Boş
+ * bırakılabilir — havale bilgisi girmek zorunlu değil.
+ */
+export const bankSchema = z.object({
+  bankName: z.string().trim().max(80),
+  ibanHolder: z.string().trim().max(120),
+  iban: z
+    .string()
+    .trim()
+    .refine(
+      (v) => v === "" || /^TR\d{24}$/.test(v.replace(/\s/g, "").toUpperCase()),
+      "IBAN 'TR' ile başlayan 26 karakter olmalı",
+    ),
+});
+
+export const changePasswordSchema = z.object({
+  current: z.string().min(1, "Mevcut şifrenizi girin"),
+  next: passwordField,
+});
+
+/** Yüzde alanları metin tutar; virgül de nokta da kabul edilir. */
+const percentField = (max: number, message: string) =>
+  z
+    .string()
+    .trim()
+    .refine((v) => {
+      const n = Number(v.replace(",", "."));
+      return Number.isFinite(n) && n >= 0 && n <= max;
+    }, message);
+
+export const cardFeeSchema = z.object({
+  feePct: percentField(20, "Komisyon farkı 0 ile 20 arasında olmalı"),
+});
+
+export const duesRulesSchema = z.object({
+  dueDay: z.string(),
+  lateFeePct: percentField(100, "Gecikme tazminatı 0 ile 100 arasında olmalı"),
+  defaultShareMethod: z.enum(["esit", "arsa_payi"]),
+  debtVisibility: z.enum(["yonetim", "herkes"]),
+  accrualDay: z.string(),
+});

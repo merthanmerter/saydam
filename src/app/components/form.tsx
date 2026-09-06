@@ -144,7 +144,7 @@ export const { useAppForm } = createFormHook({
  *
  *   const form = useAppForm({ defaultValues, ...validate(schema), onSubmit });
  */
-export const validate = <T,>(schema: StandardSchemaV1<T>) =>
+export const validate = <TSchema extends StandardSchemaV1>(schema: TSchema) =>
   ({ validationLogic: revalidateLogic(), validators: { onDynamic: schema } }) as const;
 
 /**

@@ -2,7 +2,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { CreditCard, KeyRound, Landmark, Repeat, Scale, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import type { z } from "zod";
 import { Field, Money, PageHeader } from "@/app/components/bits";
+import { Form, useAppForm, validate } from "@/app/components/form";
 import { settingsRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Badge } from "@/components/ui/badge";
@@ -25,10 +27,16 @@ import {
 import { del, patch, post, put, useAction, useSuspenseApi } from "@/lib/api";
 import { date, money } from "@/lib/format";
 import {
+  bankSchema,
+  cardFeeSchema,
+  changePasswordSchema,
+  duesRulesSchema,
+  siteProfileSchema,
+} from "@/lib/schemas";
+import {
   type OnlinePayment,
   type ProviderName,
   SHARE_METHODS,
-  type ShareMethod,
   type Site,
   type Subscription,
   type UnitsSummary,
@@ -67,22 +75,22 @@ export default function Settings() {
 }
 
 function SiteForm({ site }: { site: Site }) {
-  const [form, setForm] = useState({
-    name: site.name,
-    city: site.city,
-    address: site.address,
-  });
-
   const save = useAction(
-    () =>
+    (value: z.infer<typeof siteProfileSchema>) =>
       patch("/site", {
-        ...form,
+        ...value,
         iban: site.iban,
         ibanHolder: site.ibanHolder,
         bankName: site.bankName,
       }),
     { invalidate: ["/site", "/units"], success: "Site bilgileri güncellendi" },
   );
+
+  const form = useAppForm({
+    defaultValues: { name: site.name, city: site.city, address: site.address },
+    ...validate(siteProfileSchema),
+    onSubmit: ({ value }) => save.mutateAsync(value),
+  });
 
   return (
     <Card>
@@ -93,93 +101,72 @@ function SiteForm({ site }: { site: Site }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            save.mutate(undefined);
-          }}
-        >
-          <Field label="Site adı">
-            <Input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </Field>
-          <Field label="Şehir">
-            <Input
-              value={form.city}
-              onChange={(e) => setForm({ ...form, city: e.target.value })}
-            />
-          </Field>
-          <Field label="Adres">
-            <Input
-              value={form.address}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-            />
-          </Field>
-          <Button type="submit" disabled={save.isPending} className="justify-self-start">
-            Kaydet
-          </Button>
-        </form>
+        <Form form={form} className="grid gap-4">
+          <form.AppField name="name">
+            {(f) => <f.TextField label="Site adı" />}
+          </form.AppField>
+          <form.AppField name="city">{(f) => <f.TextField label="Şehir" />}</form.AppField>
+          <form.AppField name="address">
+            {(f) => <f.TextField label="Adres" />}
+          </form.AppField>
+          <form.AppForm>
+            <form.Submit className="justify-self-start">Kaydet</form.Submit>
+          </form.AppForm>
+        </Form>
       </CardContent>
     </Card>
   );
 }
 
-/**
- * Kartla ödemede sakine yansıtılan komisyon farkı.
- *
- * Ayrı bir formdur: oranı değiştirmek için sağlayıcı anahtarlarını yeniden
- * girmek gerekmesin. Varsayılan 0, yani fark yansıtılmaz.
- */
 function CardFeeForm({ feePct }: { feePct: number }) {
-  const [value, setValue] = useState(String(feePct));
-  const pct = Number(value.replace(",", ".")) || 0;
-
-  const save = useAction(() => put("/site/card-fee", { feePct: pct }), {
+  const save = useAction((value: number) => put("/site/card-fee", { feePct: value }), {
     invalidate: ["/site"],
-    success: pct > 0 ? "Komisyon farkı güncellendi" : "Komisyon farkı kaldırıldı",
+    success: "Komisyon farkı güncellendi",
+  });
+
+  const form = useAppForm({
+    defaultValues: { feePct: String(feePct) },
+    ...validate(cardFeeSchema),
+    onSubmit: ({ value }) => save.mutateAsync(Number(value.feePct.replace(",", "."))),
   });
 
   return (
     <CardContent className="border-t pt-6">
-      <form
-        className="grid gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          save.mutate(undefined);
-        }}
-      >
-        <Field
-          label="Kart komisyon farkı (%)"
-          hint="0 → yansıtılmaz. Sakinden borcun üstüne bu oran kadar fazla tahsil edilir; borca işlenen tutar değişmez."
-        >
-          <Input
-            inputMode="decimal"
-            className="tabular sm:max-w-[160px]"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-          />
-        </Field>
-
-        <p className="rounded-lg border bg-muted/40 px-3 py-2 text-muted-foreground text-xs">
-          {pct > 0 ? (
-            <>
-              Örnek: <Money cents={100_000} /> borç için karttan{" "}
-              <Money cents={Math.round(100_000 * (1 + pct / 100))} /> çekilir, daire
-              bakiyesinden <Money cents={100_000} /> düşer. Aradaki fark sağlayıcıya gider,
-              kasaya girmez.
-            </>
-          ) : (
-            "Komisyonu sakine yansıtmak, kartlı ödemeyi nakitten pahalı hâle getirir. Uygulamadan önce yönetim planınıza ve sağlayıcı sözleşmenize bakın: üye işyerlerinin kart komisyonunu müşteriye yansıtması mevzuatla sınırlıdır (5464 sayılı Kanun)."
+      <Form form={form} className="grid gap-4">
+        <form.AppField name="feePct">
+          {(f) => (
+            <f.TextField
+              label="Kart komisyon farkı (%)"
+              hint="0 → yansıtılmaz. Sakinden borcun üstüne bu oran kadar fazla tahsil edilir; borca işlenen tutar değişmez."
+              inputMode="decimal"
+              className="tabular sm:max-w-[160px]"
+            />
           )}
-        </p>
+        </form.AppField>
 
-        <Button type="submit" disabled={save.isPending} className="justify-self-start">
-          Kaydet
-        </Button>
-      </form>
+        <form.Subscribe
+          selector={(state) => Number(state.values.feePct.replace(",", ".")) || 0}
+        >
+          {(pct) => (
+            <p className="rounded-lg border bg-muted/40 px-3 py-2 text-muted-foreground text-xs">
+              {pct > 0 ? (
+                <>
+                  Örnek: <Money cents={100_000} /> borç için karttan{" "}
+                  <Money cents={Math.round(100_000 * (1 + pct / 100))} /> çekilir, daire
+                  bakiyesinden <Money cents={100_000} /> düşer. Aradaki fark sağlayıcıya
+                  gider, kasaya girmez.
+                </>
+              ) : (
+                "Komisyonu sakine yansıtmak, kartlı ödemeyi nakitten pahalı hâle getirir. Uygulamadan önce yönetim planınıza ve sağlayıcı sözleşmenize bakın: üye işyerlerinin kart komisyonunu müşteriye yansıtması mevzuatla sınırlıdır (5464 sayılı Kanun)."
+              )}
+            </p>
+          )}
+        </form.Subscribe>
+
+        <form.AppForm>
+          <form.Submit className="justify-self-start">Kaydet</form.Submit>
+        </form.AppForm>
+      </Form>
     </CardContent>
   );
 }
@@ -191,25 +178,31 @@ function CardFeeForm({ feePct }: { feePct: number }) {
  * varsayılan olarak yalnızca yönetime açıktır.
  */
 function DuesRulesForm({ site }: { site: Site }) {
-  const [form, setForm] = useState({
-    dueDay: String(site.dueDay),
-    lateFeePct: String(site.lateFeePct),
-    defaultShareMethod: site.defaultShareMethod,
-    debtVisibility: site.debtVisibility,
-    accrualDay: site.accrualDay === null ? "off" : String(site.accrualDay),
-  });
-
   const save = useAction(
-    () =>
+    (value: z.infer<typeof duesRulesSchema>) =>
       put("/site/dues-rules", {
-        dueDay: Number(form.dueDay),
-        lateFeePct: Number(form.lateFeePct.replace(",", ".")),
-        defaultShareMethod: form.defaultShareMethod,
-        debtVisibility: form.debtVisibility,
-        accrualDay: form.accrualDay === "off" ? null : Number(form.accrualDay),
+        dueDay: Number(value.dueDay),
+        lateFeePct: Number(value.lateFeePct.replace(",", ".")),
+        defaultShareMethod: value.defaultShareMethod,
+        debtVisibility: value.debtVisibility,
+        accrualDay: value.accrualDay === "off" ? null : Number(value.accrualDay),
       }),
     { invalidate: ["/site", "/reports"], success: "Aidat kuralları güncellendi" },
   );
+
+  const form = useAppForm({
+    defaultValues: {
+      dueDay: String(site.dueDay),
+      lateFeePct: String(site.lateFeePct),
+      defaultShareMethod: site.defaultShareMethod,
+      debtVisibility: site.debtVisibility,
+      accrualDay: site.accrualDay === null ? "off" : String(site.accrualDay),
+    },
+    ...validate(duesRulesSchema),
+    onSubmit: ({ value }) => save.mutateAsync(value),
+  });
+
+  const days = Array.from({ length: 28 }, (_, i) => i + 1);
 
   return (
     <Card>
@@ -223,137 +216,143 @@ function DuesRulesForm({ site }: { site: Site }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            save.mutate(undefined);
-          }}
-        >
+        <Form form={form} className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Son ödeme günü" hint="Ayın kaçında vade dolar">
-              <Select
-                value={form.dueDay}
-                onValueChange={(dueDay) => setForm({ ...form, dueDay })}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
-                    <SelectItem key={day} value={String(day)}>
-                      Ayın {day}'i
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Gecikme tazminatı (aylık %)" hint="KMK m.20/c: %5">
-              <Input
-                inputMode="decimal"
-                value={form.lateFeePct}
-                onChange={(e) => setForm({ ...form, lateFeePct: e.target.value })}
-              />
-            </Field>
+            <form.AppField name="dueDay">
+              {(f) => (
+                <f.ChoiceField label="Son ödeme günü" hint="Ayın kaçında vade dolar">
+                  {(value, onChange) => (
+                    <Select value={value} onValueChange={onChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {days.map((day) => (
+                          <SelectItem key={day} value={String(day)}>
+                            Ayın {day}'i
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </f.ChoiceField>
+              )}
+            </form.AppField>
+            <form.AppField name="lateFeePct">
+              {(f) => (
+                <f.TextField
+                  label="Gecikme tazminatı (aylık %)"
+                  hint="KMK m.20/c: %5"
+                  inputMode="decimal"
+                />
+              )}
+            </form.AppField>
           </div>
 
-          <Field
-            label="Varsayılan paylaşım yöntemi"
-            hint="Yeni gider kalemlerine önerilir; her kalem ayrıca değiştirilebilir"
-          >
-            <Select
-              value={form.defaultShareMethod}
-              onValueChange={(value) =>
-                setForm({ ...form, defaultShareMethod: value as ShareMethod })
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SHARE_METHODS.map((method) => (
-                  <SelectItem key={method.id} value={method.id}>
-                    {method.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          <form.AppField name="defaultShareMethod">
+            {(f) => (
+              <f.ChoiceField
+                label="Varsayılan paylaşım yöntemi"
+                hint="Yeni gider kalemlerine önerilir; her kalem ayrıca değiştirilebilir"
+              >
+                {(value, onChange) => (
+                  <Select value={value} onValueChange={onChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SHARE_METHODS.map((method) => (
+                        <SelectItem key={method.id} value={method.id}>
+                          {method.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </f.ChoiceField>
+            )}
+          </form.AppField>
 
-          <Field
-            label="Otomatik tahakkuk"
-            hint={
-              form.accrualDay === "off"
-                ? "Kapalı — aidatı her dönem elle hesaplarsınız"
-                : "O ay elle hesaplanmadıysa sistem kendisi tahakkuk ettirir"
-            }
-          >
-            <Select
-              value={form.accrualDay}
-              onValueChange={(accrualDay) => setForm({ ...form, accrualDay })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="off">Kapalı</SelectItem>
-                {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
-                  <SelectItem key={day} value={String(day)}>
-                    Her ayın {day}. günü
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          <form.AppField name="accrualDay">
+            {(f) => (
+              <f.ChoiceField
+                label="Otomatik tahakkuk"
+                hint="O ay elle hesaplanmadıysa sistem kendisi tahakkuk ettirir"
+              >
+                {(value, onChange) => (
+                  <Select value={value} onValueChange={onChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="off">Kapalı</SelectItem>
+                      {days.map((day) => (
+                        <SelectItem key={day} value={String(day)}>
+                          Her ayın {day}. günü
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </f.ChoiceField>
+            )}
+          </form.AppField>
 
-          <Field
-            label="Daire borç listesi"
-            hint="Kasa ve gider şeffaflığı her hâlükârda herkese açıktır"
-          >
-            <Select
-              value={form.debtVisibility}
-              onValueChange={(value) =>
-                setForm({ ...form, debtVisibility: value as "yonetim" | "herkes" })
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="yonetim">
-                  Yalnızca yönetim (KVKK açısından güvenli)
-                </SelectItem>
-                <SelectItem value="herkes">Tüm sakinler görebilir</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
+          <form.AppField name="debtVisibility">
+            {(f) => (
+              <f.ChoiceField
+                label="Daire borç listesi"
+                hint="Kasa ve gider şeffaflığı her hâlükârda herkese açıktır"
+              >
+                {(value, onChange) => (
+                  <Select value={value} onValueChange={onChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yonetim">
+                        Yalnızca yönetim (KVKK açısından güvenli)
+                      </SelectItem>
+                      <SelectItem value="herkes">Tüm sakinler görebilir</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </f.ChoiceField>
+            )}
+          </form.AppField>
 
-          <Button type="submit" disabled={save.isPending} className="justify-self-start">
-            Kaydet
-          </Button>
-        </form>
+          <form.AppForm>
+            <form.Submit className="justify-self-start">Kaydet</form.Submit>
+          </form.AppForm>
+        </Form>
       </CardContent>
     </Card>
   );
 }
 
 function IbanForm({ site }: { site: Site }) {
-  const [iban, setIban] = useState(site.iban ?? "");
-  const [holder, setHolder] = useState(site.ibanHolder ?? "");
-  const [bank, setBank] = useState(site.bankName ?? "");
-
   const save = useAction(
-    () =>
+    (value: z.infer<typeof bankSchema>) =>
       patch("/site", {
         name: site.name,
         city: site.city,
         address: site.address,
-        iban: iban || null,
-        ibanHolder: holder || null,
-        bankName: bank || null,
+        iban: value.iban || null,
+        ibanHolder: value.ibanHolder || null,
+        bankName: value.bankName || null,
       }),
     { invalidate: ["/site"], success: "Tahsilat bilgileri güncellendi" },
   );
+
+  const form = useAppForm({
+    defaultValues: {
+      bankName: site.bankName ?? "",
+      ibanHolder: site.ibanHolder ?? "",
+      iban: site.iban ?? "",
+    },
+    ...validate(bankSchema),
+    onSubmit: ({ value }) => save.mutateAsync(value),
+  });
 
   return (
     <Card>
@@ -366,35 +365,26 @@ function IbanForm({ site }: { site: Site }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            save.mutate(undefined);
-          }}
-        >
-          <Field label="Banka">
-            <Input
-              placeholder="Ziraat Bankası"
-              value={bank}
-              onChange={(e) => setBank(e.target.value)}
-            />
-          </Field>
-          <Field label="Hesap sahibi">
-            <Input value={holder} onChange={(e) => setHolder(e.target.value)} />
-          </Field>
-          <Field label="IBAN">
-            <Input
-              className="tabular"
-              placeholder="TR00 0000 0000 0000 0000 0000 00"
-              value={iban}
-              onChange={(e) => setIban(e.target.value)}
-            />
-          </Field>
-          <Button type="submit" disabled={save.isPending} className="justify-self-start">
-            Kaydet
-          </Button>
-        </form>
+        <Form form={form} className="grid gap-4">
+          <form.AppField name="bankName">
+            {(f) => <f.TextField label="Banka" placeholder="Ziraat Bankası" />}
+          </form.AppField>
+          <form.AppField name="ibanHolder">
+            {(f) => <f.TextField label="Hesap sahibi" />}
+          </form.AppField>
+          <form.AppField name="iban">
+            {(f) => (
+              <f.TextField
+                label="IBAN"
+                className="tabular"
+                placeholder="TR00 0000 0000 0000 0000 0000 00"
+              />
+            )}
+          </form.AppField>
+          <form.AppForm>
+            <form.Submit className="justify-self-start">Kaydet</form.Submit>
+          </form.AppForm>
+        </Form>
       </CardContent>
     </Card>
   );
@@ -557,15 +547,15 @@ function OnlinePaymentForm({ current }: { current: OnlinePayment }) {
 }
 
 function PasswordForm() {
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
+  const save = useAction(
+    (value: z.infer<typeof changePasswordSchema>) => post("/auth/change-password", value),
+    { success: "Şifreniz güncellendi", onDone: () => form.reset() },
+  );
 
-  const save = useAction(() => post("/auth/change-password", { current, next }), {
-    success: "Şifreniz güncellendi",
-    onDone: () => {
-      setCurrent("");
-      setNext("");
-    },
+  const form = useAppForm({
+    defaultValues: { current: "", next: "" },
+    ...validate(changePasswordSchema),
+    onSubmit: ({ value }) => save.mutateAsync(value),
   });
 
   return (
@@ -577,36 +567,30 @@ function PasswordForm() {
         <CardDescription>Şifreniz yalnızca bu site için geçerlidir.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            save.mutate(undefined);
-          }}
-        >
-          <Field label="Mevcut şifre">
-            <Input
-              type="password"
-              required
-              autoComplete="current-password"
-              value={current}
-              onChange={(e) => setCurrent(e.target.value)}
-            />
-          </Field>
-          <Field label="Yeni şifre" hint="En az 8 karakter">
-            <Input
-              type="password"
-              required
-              minLength={8}
-              autoComplete="new-password"
-              value={next}
-              onChange={(e) => setNext(e.target.value)}
-            />
-          </Field>
-          <Button type="submit" disabled={save.isPending} className="justify-self-start">
-            Güncelle
-          </Button>
-        </form>
+        <Form form={form} className="grid gap-4">
+          <form.AppField name="current">
+            {(f) => (
+              <f.TextField
+                label="Mevcut şifre"
+                type="password"
+                autoComplete="current-password"
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="next">
+            {(f) => (
+              <f.TextField
+                label="Yeni şifre"
+                hint="En az 8 karakter"
+                type="password"
+                autoComplete="new-password"
+              />
+            )}
+          </form.AppField>
+          <form.AppForm>
+            <form.Submit className="justify-self-start">Güncelle</form.Submit>
+          </form.AppForm>
+        </Form>
       </CardContent>
     </Card>
   );
