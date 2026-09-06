@@ -215,8 +215,10 @@
    * fazladan geliyor ve menü her açıldığında sayfa çubuk genişliği kadar
    * sola kayıyordu.
    */
-  body[data-scroll-locked] {
-    padding-right: 0 !important;
+  /* `html` öneki yalnızca özgüllük içindir: Radix kendi kuralını çalışma
+     anında sonradan enjekte ediyor, eşit özgüllükte sonuncu kazanırdı. */
+  html body[data-scroll-locked] {
+    padding-right: 0;
   }
   body {
     @apply bg-background text-foreground;
