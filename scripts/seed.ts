@@ -5,12 +5,13 @@
  * Son altı ayın tahakkuku, tahsilatı, giderleri ve içeriğiyle birlikte
  * gerçekçi bir site kurar; tanıtım ekran görüntüleri de bu veriden çekilir.
  */
+
+import { addMonths, currentPeriod, periodLabel } from "../src/lib/period.ts";
 import { runDues } from "../src/server/accounting.ts";
 import { hashPassword } from "../src/server/auth.ts";
 import { sql } from "../src/server/db.ts";
 import { env } from "../src/server/env.ts";
 import { installmentPlan, restructurePlan } from "../src/server/money.ts";
-import { addMonths, currentPeriod, periodLabel } from "../src/server/period.ts";
 
 if (process.env.NODE_ENV === "production") {
   throw new Error("Seed üretimde çalıştırılamaz");

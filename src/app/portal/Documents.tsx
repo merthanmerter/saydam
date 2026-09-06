@@ -16,13 +16,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { del, post, useAction, usePaged } from "@/lib/api";
 import { date } from "@/lib/format";
 import { documentSchema } from "@/lib/schemas";
@@ -180,22 +173,13 @@ function UploadDialog() {
           </form.AppField>
           <form.AppField name="category">
             {(f) => (
-              <f.ChoiceField label="Kategori">
-                {(value, onChange) => (
-                  <Select value={value} onValueChange={onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(CATEGORIES).map(([id, label]) => (
-                        <SelectItem key={id} value={id}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </f.ChoiceField>
+              <f.SelectField
+                label="Kategori"
+                options={Object.entries(CATEGORIES).map(([value, label]) => ({
+                  value,
+                  label,
+                }))}
+              />
             )}
           </form.AppField>
           <Field label="Dosya">

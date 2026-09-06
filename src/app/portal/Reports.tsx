@@ -10,7 +10,12 @@ import {
 import { Suspense, useMemo, useTransition } from "react";
 import { Money, PageHeader, Stat } from "@/app/components/bits";
 import { ConfirmDialog } from "@/app/components/confirm";
-import { type Column, DataTable } from "@/app/components/data-table";
+import {
+  type Column,
+  DataTable,
+  moneyColumn,
+  shareColumn,
+} from "@/app/components/data-table";
 import { TableSkeleton } from "@/app/components/skeletons";
 import { reportsRoute } from "@/app/router";
 import { useSession } from "@/app/session";
@@ -26,7 +31,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { del, post, useAction, usePaged, useSuspenseApi } from "@/lib/api";
-import { money, number } from "@/lib/format";
+import { money } from "@/lib/format";
 import type { Balance, Treasury, YearEnd } from "@/lib/types";
 
 export default function Reports() {
@@ -161,16 +166,7 @@ const balanceColumns = (ownOnly: boolean): Column<Balance>[] => [
           ),
         } satisfies Column<Balance>,
       ]),
-  {
-    accessorKey: "arsaPayi",
-    header: "Arsa payı",
-    meta: { align: "right" },
-    cell: ({ row }) => (
-      <span className="tabular text-muted-foreground text-sm">
-        {number(row.original.arsaPayi)}
-      </span>
-    ),
-  },
+  shareColumn<Balance>(),
   {
     accessorKey: "accruedCents",
     header: "Tahakkuk",
@@ -267,22 +263,8 @@ const yearEndColumns: Column<YearEndUnit>[] = [
     header: "Daire",
     cell: ({ row }) => <span className="font-medium">{row.original.label}</span>,
   },
-  {
-    accessorKey: "arsaPayi",
-    header: "Arsa payı",
-    meta: { align: "right" },
-    cell: ({ row }) => (
-      <span className="tabular text-muted-foreground text-sm">
-        {number(row.original.arsaPayi)}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "amountCents",
-    header: "Tutar",
-    meta: { align: "right" },
-    cell: ({ row }) => <Money cents={row.original.amountCents} className="font-medium" />,
-  },
+  shareColumn<YearEndUnit>(),
+  moneyColumn<YearEndUnit>("amountCents", "Tutar"),
 ];
 
 /** Yıl sonu mahsuplaşma. */

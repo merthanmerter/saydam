@@ -14,7 +14,13 @@ import { toast } from "sonner";
 import type { z } from "zod";
 import { DialogActions, EmptyState, Field, Money, PageHeader } from "@/app/components/bits";
 import { ConfirmDialog } from "@/app/components/confirm";
-import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
+import {
+  actionsColumn,
+  type Column,
+  DataTable,
+  moneyColumn,
+  unitColumn,
+} from "@/app/components/data-table";
 import { Form, useAppForm, validate } from "@/app/components/form";
 import { FileUpload, type UploadedFile } from "@/app/components/inputs";
 import { RowActions } from "@/app/components/row-actions";
@@ -190,16 +196,7 @@ const paymentColumns = (
       </span>
     ),
   },
-  {
-    id: "unit",
-    header: "Daire",
-    cell: ({ row }) => (
-      <span className="font-medium">
-        {row.original.block && `${row.original.block} `}
-        {row.original.no}
-      </span>
-    ),
-  },
+  unitColumn<Payment>(),
   ...(isAdmin
     ? [
         {
@@ -231,12 +228,7 @@ const paymentColumns = (
     header: "Yöntem",
     cell: ({ row }) => <span className="text-sm">{METHOD_LABEL[row.original.method]}</span>,
   },
-  {
-    accessorKey: "amountCents",
-    header: "Tutar",
-    meta: { align: "right" },
-    cell: ({ row }) => <Money cents={row.original.amountCents} className="font-medium" />,
-  },
+  moneyColumn<Payment>("amountCents", "Tutar"),
   {
     accessorKey: "status",
     header: "Durum",
@@ -473,6 +465,7 @@ function OnlinePayDialog({ units, feePct }: { units: Balance[]; feePct: number }
           {feePct > 0 && (
             <form.Subscribe selector={(state) => toCents(state.values.amount)}>
               {(amountCents) => {
+                if (!Number.isFinite(amountCents) || amountCents <= 0) return null;
                 const feeCents = Math.round((amountCents * feePct) / 100);
                 if (feeCents <= 0) return null;
                 return (
@@ -601,19 +594,13 @@ function ManualPaymentDialog({
             </form.AppField>
             <form.AppField name="method">
               {(f) => (
-                <f.ChoiceField label="Yöntem">
-                  {(value, onChange) => (
-                    <Select value={value} onValueChange={onChange}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="transfer">Havale/EFT</SelectItem>
-                        <SelectItem value="cash">Nakit</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                </f.ChoiceField>
+                <f.SelectField
+                  label="Yöntem"
+                  options={[
+                    { value: "transfer", label: "Havale/EFT" },
+                    { value: "cash", label: "Nakit" },
+                  ]}
+                />
               )}
             </form.AppField>
           </div>

@@ -5,8 +5,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DialogClose, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { FieldIdContext } from "@/lib/field-id";
 import { money } from "@/lib/format";
+import { SHARE_METHODS, type ShareMethod } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({
@@ -167,3 +175,36 @@ export function DialogActions({ children }: { children: ReactNode }) {
     </DialogFooter>
   );
 }
+
+/**
+ * KMK m.20 paylaşım yöntemi seçici.
+ *
+ * Hem gider formunda hem site ayarlarında aynı liste gösteriliyor; seçenek
+ * metinleri tek yerde dursun diye burada.
+ */
+export function ShareMethodSelect({
+  value,
+  onChange,
+}: {
+  value: ShareMethod;
+  onChange: (method: ShareMethod) => void;
+}) {
+  return (
+    <Select value={value} onValueChange={(next) => onChange(next as ShareMethod)}>
+      <SelectTrigger className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {SHARE_METHODS.map((method) => (
+          <SelectItem key={method.id} value={method.id}>
+            {method.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Seçili yöntemin açıklaması — `Field` ipucu olarak kullanılır. */
+export const shareMethodHint = (value: ShareMethod) =>
+  SHARE_METHODS.find((method) => method.id === value)?.hint;

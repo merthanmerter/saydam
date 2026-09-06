@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { currentPeriod, isValidPeriod, periodLabel } from "../../lib/period.ts";
+import { payerEnum, shareMethodEnum } from "../../lib/schemas.ts";
 import {
   applyYearEnd,
   periodBudget,
@@ -9,7 +11,7 @@ import {
   yearEndSettlement,
 } from "../accounting.ts";
 import type { Auth } from "../auth.ts";
-import { type Row, sql, toCents, toNumber } from "../db.ts";
+import { type Row, sql, toCents } from "../db.ts";
 import {
   badRequest,
   body,
@@ -22,7 +24,6 @@ import {
 } from "../http.ts";
 import { belongsToSite } from "../lib/blob.ts";
 import { installmentPlan } from "../money.ts";
-import { currentPeriod, isValidPeriod, periodLabel } from "../period.ts";
 import {
   cancelRestructuring,
   createRestructuring,
@@ -33,9 +34,18 @@ import {
 const periodField = z.number().int().refine(isValidPeriod, "Dönem YYYYAA biçiminde olmalı");
 const cents = z.number().int().positive().max(1_000_000_000_00);
 
-const shareMethod = z.enum(["esit", "arsa_payi"]);
+const shareMethod = shareMethodEnum;
 /** Daire içinde kimin yükümlü olduğu; varsayılan malik (KMK m.20). */
-const payer = z.enum(["malik", "kiraci"]).default("malik");
+const payer = payerEnum.default("malik");
+
+/** Elle girilen tahsilat: hem yeni kayıt hem düzeltme aynı alanları alır. */
+const manualPaymentBody = z.object({
+  unitId: z.uuid(),
+  amountCents: cents,
+  method: z.enum(["transfer", "cash"]),
+  paidAt: z.iso.date(),
+  reference: z.string().trim().max(120).nullable().default(null),
+});
 
 const recurringSchema = z.object({
   title: z.string().trim().min(2).max(120),
@@ -195,7 +205,7 @@ export function financeRoutes(
       ...paged(rows, pg, (e: Row) => ({
         ...e,
         amountCents: toCents(e.amountCents),
-        surchargePct: toNumber(e.surchargePct),
+        surchargePct: toCents(e.surchargePct),
         allocations: (e.allocations as Row[]).map((a) => ({
           period: a.period,
           amountCents: toCents(a.amountCents),
@@ -384,7 +394,7 @@ export function financeRoutes(
         amountCents: toCents(d.amountCents),
         ownerCents: toCents(d.ownerCents),
         tenantCents: toCents(d.tenantCents),
-        arsaPayi: toNumber(d.arsaPayi),
+        arsaPayi: toCents(d.arsaPayi),
         // jsonb sürücüden dize gelir; istemciye çözülmüş hâlde gitsin.
         breakdown: parseBreakdown(d.breakdown),
         residentName: ctx.auth.view === "admin" ? d.residentName : undefined,
@@ -469,12 +479,7 @@ export function financeRoutes(
   admin.post("/payments", async (ctx) => {
     const input = await body(
       ctx.req,
-      z.object({
-        unitId: z.uuid(),
-        amountCents: cents,
-        method: z.enum(["transfer", "cash"]),
-        paidAt: z.iso.date(),
-        reference: z.string().trim().max(120).nullable().default(null),
+      manualPaymentBody.extend({
         note: z.string().trim().max(300).nullable().default(null),
       }),
     );
@@ -515,16 +520,7 @@ export function financeRoutes(
       throw conflict("Kartla yapılan tahsilat elle değiştirilemez");
     }
 
-    const input = await body(
-      ctx.req,
-      z.object({
-        unitId: z.uuid(),
-        amountCents: cents,
-        method: z.enum(["transfer", "cash"]),
-        paidAt: z.iso.date(),
-        reference: z.string().trim().max(120).nullable().default(null),
-      }),
-    );
+    const input = await body(ctx.req, manualPaymentBody);
 
     const years = [existing.year, Number(input.paidAt.slice(0, 4))];
     const [settled] = await sql`
@@ -700,7 +696,7 @@ export function financeRoutes(
     `;
     return json({
       months: rows.map((row: Row) => ({
-        period: toNumber(row.period),
+        period: toCents(row.period),
         collectedCents: toCents(row.collectedCents),
         spentCents: toCents(row.spentCents),
         accruedCents: toCents(row.accruedCents),

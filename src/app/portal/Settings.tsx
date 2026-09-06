@@ -3,7 +3,7 @@ import { CreditCard, KeyRound, Landmark, Repeat, Scale, ShieldCheck } from "luci
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { z } from "zod";
-import { Field, Money, PageHeader } from "@/app/components/bits";
+import { Field, Money, PageHeader, ShareMethodSelect } from "@/app/components/bits";
 import { Form, useAppForm, validate } from "@/app/components/form";
 import { settingsRoute } from "@/app/router";
 import { useSession } from "@/app/session";
@@ -34,13 +34,13 @@ import {
   siteProfileSchema,
   switchSiteSchema,
 } from "@/lib/schemas";
-import {
-  type OnlinePayment,
-  type ProviderName,
-  SHARE_METHODS,
-  type Site,
-  type Subscription,
-  type UnitsSummary,
+import type {
+  OnlinePayment,
+  ProviderName,
+  ShareMethod,
+  Site,
+  Subscription,
+  UnitsSummary,
 } from "@/lib/types";
 
 export default function Settings() {
@@ -221,22 +221,14 @@ function DuesRulesForm({ site }: { site: Site }) {
           <div className="grid gap-4 sm:grid-cols-2">
             <form.AppField name="dueDay">
               {(f) => (
-                <f.ChoiceField label="Son ödeme günü" hint="Ayın kaçında vade dolar">
-                  {(value, onChange) => (
-                    <Select value={value} onValueChange={onChange}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {days.map((day) => (
-                          <SelectItem key={day} value={String(day)}>
-                            Ayın {day}'i
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </f.ChoiceField>
+                <f.SelectField
+                  label="Son ödeme günü"
+                  hint="Ayın kaçında vade dolar"
+                  options={days.map((day) => ({
+                    value: String(day),
+                    label: `Ayın ${day}'i`,
+                  }))}
+                />
               )}
             </form.AppField>
             <form.AppField name="lateFeePct">
@@ -257,18 +249,7 @@ function DuesRulesForm({ site }: { site: Site }) {
                 hint="Yeni gider kalemlerine önerilir; her kalem ayrıca değiştirilebilir"
               >
                 {(value, onChange) => (
-                  <Select value={value} onValueChange={onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SHARE_METHODS.map((method) => (
-                        <SelectItem key={method.id} value={method.id}>
-                          {method.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ShareMethodSelect value={value as ShareMethod} onChange={onChange} />
                 )}
               </f.ChoiceField>
             )}
@@ -276,49 +257,30 @@ function DuesRulesForm({ site }: { site: Site }) {
 
           <form.AppField name="accrualDay">
             {(f) => (
-              <f.ChoiceField
+              <f.SelectField
                 label="Otomatik tahakkuk"
                 hint="O ay elle hesaplanmadıysa sistem kendisi tahakkuk ettirir"
-              >
-                {(value, onChange) => (
-                  <Select value={value} onValueChange={onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="off">Kapalı</SelectItem>
-                      {days.map((day) => (
-                        <SelectItem key={day} value={String(day)}>
-                          Her ayın {day}. günü
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </f.ChoiceField>
+                options={[
+                  { value: "off", label: "Kapalı" },
+                  ...days.map((day) => ({
+                    value: String(day),
+                    label: `Her ayın ${day}. günü`,
+                  })),
+                ]}
+              />
             )}
           </form.AppField>
 
           <form.AppField name="debtVisibility">
             {(f) => (
-              <f.ChoiceField
+              <f.SelectField
                 label="Daire borç listesi"
                 hint="Kasa ve gider şeffaflığı her hâlükârda herkese açıktır"
-              >
-                {(value, onChange) => (
-                  <Select value={value} onValueChange={onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="yonetim">
-                        Yalnızca yönetim (KVKK açısından güvenli)
-                      </SelectItem>
-                      <SelectItem value="herkes">Tüm sakinler görebilir</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              </f.ChoiceField>
+                options={[
+                  { value: "yonetim", label: "Yalnızca yönetim (KVKK açısından güvenli)" },
+                  { value: "herkes", label: "Tüm sakinler görebilir" },
+                ]}
+              />
             )}
           </form.AppField>
 
@@ -642,23 +604,14 @@ function SiteSwitcher() {
         <Form form={form} className="grid gap-4">
           <form.AppField name="siteId">
             {(f) => (
-              <f.ChoiceField label="Site">
-                {(value, onChange) => (
-                  <Select value={value} onValueChange={onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Site seçin" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {others.map((site) => (
-                        <SelectItem key={site.siteId} value={site.siteId}>
-                          {site.name}
-                          {site.city ? ` · ${site.city}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </f.ChoiceField>
+              <f.SelectField
+                label="Site"
+                placeholder="Site seçin"
+                options={others.map((site) => ({
+                  value: site.siteId,
+                  label: site.city ? `${site.name} · ${site.city}` : site.name,
+                }))}
+              />
             )}
           </form.AppField>
           <form.AppField name="password">

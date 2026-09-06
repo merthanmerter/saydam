@@ -1,3 +1,45 @@
+import type { Payer, ShareMethod } from "./schemas.ts";
+
+/**
+ * Abonelik durumu. Sunucu hesaplar, oturum sorgusuyla birlikte gelir.
+ */
+export type SubscriptionState = {
+  /** Bulut sürümü mü? false ise abonelik hiç aranmaz. */
+  required: boolean;
+  status: "trialing" | "active" | "grace" | "expired" | "none";
+  validUntil: string | null;
+  /** Sürenin bitmesine kalan gün (negatifse geçmiş). */
+  daysLeft: number;
+  /** true → site yönetiminin yazma işlemleri kilitli. */
+  locked: boolean;
+};
+
+/**
+ * Oturum açmış üyelik. Sunucudaki yetki bağlamı ile istemcinin gördüğü
+ * `me` aynı şekildir; iki yerde ayrı yazıldığında sessizce ayrışıyorlardı.
+ */
+export type Member = {
+  membershipId: string;
+  siteId: string;
+  siteName: string;
+  siteSlug: string;
+  userId: string;
+  email: string;
+  fullName: string;
+  /** Üyeliğin gerçek rolü. Yetki kontrolleri daima buna bakar. */
+  role: "admin" | "resident";
+  /**
+   * Görünüm modu. Kendi dairesi olan bir yönetici, portalı sakin gözüyle
+   * görmek için `x-saydam-view: resident` başlığını gönderir; bu yalnızca
+   * okuma kapsamını daraltır, yetki vermez.
+   */
+  view: "admin" | "resident";
+  status: "active" | "removed";
+  /** Üyeye atanmış daire sayısı — sakin görünümü ancak > 0 ise anlamlı. */
+  unitCount: number;
+  subscription: SubscriptionState;
+};
+
 export type Treasury = {
   collectedCents: number;
   pendingCents: number;
@@ -20,7 +62,7 @@ export type UnitsSummary = {
  * maliktir (KMK m.20); kiracı kira bedeli kadar müteselsil sorumludur (m.22).
  * Bu ayrım malik ile kiracı arasındaki paylaşımı gösterir (TBK m.303).
  */
-export type Payer = "malik" | "kiraci";
+export type { Payer, ShareMethod } from "./schemas.ts";
 
 export const PAYERS: { id: Payer; label: string; hint: string }[] = [
   {
@@ -36,8 +78,6 @@ export const PAYERS: { id: Payer; label: string; hint: string }[] = [
 ];
 
 /** KMK m.20 paylaşım yöntemleri. */
-export type ShareMethod = "esit" | "arsa_payi";
-
 export const SHARE_METHODS: {
   id: ShareMethod;
   label: string;
@@ -120,7 +160,7 @@ export type Resident = {
   email?: string;
   fullName: string;
   phone?: string | null;
-  units: { id: string; block: string; no: string; role: "malik" | "kiraci" }[];
+  units: { id: string; block: string; no: string; role: Payer }[];
 };
 
 export type Recurring = {

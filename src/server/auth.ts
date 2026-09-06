@@ -1,33 +1,17 @@
+import type { Member } from "../lib/types.ts";
 import { sql } from "./db.ts";
 import { env } from "./env.ts";
 import { type Ctx, forbidden, HttpError, unauthorized } from "./http.ts";
-import { type SubscriptionState, subscriptionState } from "./subscription.ts";
+import { subscriptionState } from "./subscription.ts";
 
 const COOKIE = "sd_session";
 const SESSION_DAYS = 30;
 
-export type Auth = {
-  membershipId: string;
-  siteId: string;
-  siteName: string;
-  siteSlug: string;
-  userId: string;
-  email: string;
-  fullName: string;
-  /** Üyeliğin gerçek rolü. Yetki kontrolleri daima buna bakar. */
-  role: "admin" | "resident";
-  /**
-   * Görünüm modu. Kendi dairesi olan bir yönetici, portalı sakin gözüyle
-   * görmek için `x-saydam-view: resident` başlığını gönderir; bu yalnızca
-   * okuma kapsamını daraltır, yetki vermez.
-   */
-  view: "admin" | "resident";
-  status: "active" | "removed";
-  /** Üyeye atanmış daire sayısı — sakin görünümü ancak > 0 ise anlamlı. */
-  unitCount: number;
-  /** Sitenin bulut aboneliği durumu; oturum sorgusuyla birlikte gelir. */
-  subscription: SubscriptionState;
-};
+/**
+ * Yetki bağlamı. İstemcinin gördüğü `me` ile aynı şekil; tanım paylaşılan
+ * tip modülünde durur ki iki taraf ayrışmasın.
+ */
+export type Auth = Member;
 
 const VIEW_HEADER = "x-saydam-view";
 

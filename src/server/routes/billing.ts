@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Auth } from "../auth.ts";
-import { sql, toCents, toNumber } from "../db.ts";
+import { sql, toCents } from "../db.ts";
 import { env } from "../env.ts";
 import { badRequest, body, HttpError, json, notFound, type Router } from "../http.ts";
 import {
@@ -38,7 +38,7 @@ async function siteAccount(
     provider: row.provider,
     sandbox: row.sandbox,
     credentials: JSON.parse(decryptSecret(row.credentials)),
-    feePct: toNumber(row.feePct),
+    feePct: toCents(row.feePct),
   } as ProviderAccount & { feePct: number };
 }
 

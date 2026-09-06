@@ -6,42 +6,22 @@ const DATETIME = new Intl.DateTimeFormat("tr-TR", {
   timeStyle: "short",
 });
 
+export { addMonths, currentPeriod, periodLabel } from "./period.ts";
+
 export const money = (cents: number) => TRY.format((cents ?? 0) / 100);
 export const number = (value: number) => NUM.format(value ?? 0);
 export const date = (value: string | Date) => DATE.format(new Date(value));
 export const dateTime = (value: string | Date) => DATETIME.format(new Date(value));
 
-const MONTHS = [
-  "Ocak",
-  "Şubat",
-  "Mart",
-  "Nisan",
-  "Mayıs",
-  "Haziran",
-  "Temmuz",
-  "Ağustos",
-  "Eylül",
-  "Ekim",
-  "Kasım",
-  "Aralık",
-];
-
-export const periodLabel = (period: number) =>
-  `${MONTHS[(period % 100) - 1]} ${Math.floor(period / 100)}`;
-
-export const currentPeriod = () => {
-  const now = new Date();
-  return now.getFullYear() * 100 + now.getMonth() + 1;
-};
-
-export const addMonths = (period: number, n: number) => {
-  const zero = Math.floor(period / 100) * 12 + ((period % 100) - 1) + n;
-  return Math.floor(zero / 12) * 100 + (zero % 12) + 1;
-};
-
-/** "1.234,56" veya "1234.56" → kuruş */
+/**
+ * "1.234,56" ya da "1234.56" → kuruş. Ayrıştırılamayan girdide `NaN`.
+ *
+ * Boş metin de `NaN`: `Number("")` sıfır döndürdüğü için boş bırakılmış bir
+ * tutar alanı sessizce ₺0 oluyordu.
+ */
 export const toCents = (input: string) => {
   const raw = input.trim().replace(/[\s₺]/g, "");
+  if (raw === "") return Number.NaN;
   const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
   const value = Number(normalized);
   return Number.isFinite(value) ? Math.round(value * 100) : Number.NaN;

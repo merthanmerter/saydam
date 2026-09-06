@@ -8,6 +8,13 @@ import type { ComponentProps, ReactNode } from "react";
 import { AmountInput, Field } from "@/app/components/bits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toCents } from "@/lib/format";
 
@@ -90,7 +97,41 @@ function MoneyField({ label, hint }: { label: string; hint?: string }) {
   );
 }
 
-/** Radix `Select` kendi DOM'unu ürettiği için sarmalayıcı çocuk olarak alınır. */
+/** Sabit seçenek listesi olan alanlar: en yaygın hâl tek satıra iner. */
+function SelectField({
+  label,
+  hint,
+  options,
+  placeholder,
+}: {
+  label: string;
+  hint?: string;
+  options: readonly { value: string; label: string }[];
+  placeholder?: string;
+}) {
+  const field = useFieldContext<string>();
+  return (
+    <Field label={label} hint={hint} error={useFieldError(field.state.meta)}>
+      <Select value={field.state.value} onValueChange={field.handleChange}>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
+/**
+ * Kendi bileşenini getiren alanlar (daire seçici, kişi seçici gibi).
+ * Radix `Select` kendi DOM'unu ürettiği için sarmalayıcı çocuk olarak alınır.
+ */
 function ChoiceField({
   label,
   hint,
@@ -131,7 +172,7 @@ function Submit({ children, ...props }: ComponentProps<typeof Button>) {
 export const { useAppForm } = createFormHook({
   fieldContext,
   formContext,
-  fieldComponents: { TextField, TextAreaField, MoneyField, ChoiceField },
+  fieldComponents: { TextField, TextAreaField, MoneyField, SelectField, ChoiceField },
   formComponents: { Submit },
 });
 

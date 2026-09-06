@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { VIEW_HEADER, view } from "./view";
+import { VIEW_HEADER, view } from "./store";
 
 export class ApiError extends Error {
   constructor(

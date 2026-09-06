@@ -1,4 +1,6 @@
-import { type Row, sql, toCents, toNumber } from "./db.ts";
+import { type Period, periodLabel, periodParts, yearRange } from "../lib/period.ts";
+import type { BudgetLine } from "../lib/types.ts";
+import { type Row, sql, toCents } from "./db.ts";
 import { env } from "./env.ts";
 import { badRequest, conflict, type Page } from "./http.ts";
 import { computeLateFee } from "./lateFee.ts";
@@ -10,7 +12,6 @@ import {
   type ShareUnit,
   shareBy,
 } from "./money.ts";
-import { type Period, periodLabel, periodParts, yearRange } from "./period.ts";
 import { activeByUnit } from "./restructuring.ts";
 
 /**
@@ -25,8 +26,8 @@ export async function unitsSummary(siteId: string) {
       from units where site_id = ${siteId}
   `;
   return {
-    unitCount: toNumber(row?.unitCount),
-    totalArsaPayi: toNumber(row?.totalArsaPayi),
+    unitCount: toCents(row?.unitCount),
+    totalArsaPayi: toCents(row?.totalArsaPayi),
   };
 }
 
@@ -76,18 +77,7 @@ export async function syncSubscriptionExpense(siteId: string, period: Period) {
   });
 }
 
-export type BudgetLine = {
-  source: "recurring" | "one_off" | "system";
-  id: string;
-  title: string;
-  category: string;
-  amountCents: number;
-  /** Bu kalemin dairelere hangi yönteme göre bölüneceği (KMK m.20). */
-  shareMethod: ShareMethod;
-  /** Daire içinde kimin yükümlü olduğu: malik ya da kiracı. */
-  payer: Payer;
-  detail?: string;
-};
+export type { BudgetLine } from "../lib/types.ts";
 
 /** Bir dönemde aidata yansıyacak kalemler. */
 export async function periodBudget(siteId: string, period: Period) {
@@ -166,7 +156,7 @@ export async function runDues(siteId: string, period: Period, createdBy: string)
       from units where site_id = ${siteId} order by block, no
   `) as Row[];
 
-  const shares: ShareUnit[] = units.map((u) => ({ arsaPayi: toNumber(u.arsaPayi) }));
+  const shares: ShareUnit[] = units.map((u) => ({ arsaPayi: toCents(u.arsaPayi) }));
 
   /**
    * Her kalem KENDİ yöntemiyle bölünür, sonra daire başına toplanır. Tümünü
@@ -210,7 +200,7 @@ export async function runDues(siteId: string, period: Period, createdBy: string)
 
   const [site] = await sql`select due_day as "dueDay" from sites where id = ${siteId}`;
   const { year, month } = periodParts(period);
-  const dueDate = new Date(Date.UTC(year, month - 1, toNumber(site?.dueDay) || 10))
+  const dueDate = new Date(Date.UTC(year, month - 1, toCents(site?.dueDay) || 10))
     .toISOString()
     .slice(0, 10);
 
@@ -290,7 +280,7 @@ export async function unitBalances(
   const [site] = await sql`
     select late_fee_pct as "lateFeePct" from sites where id = ${siteId}
   `;
-  const ratePct = toNumber(site?.lateFeePct);
+  const ratePct = toCents(site?.lateFeePct);
 
   const restructured = await activeByUnit(siteId);
 
@@ -377,7 +367,7 @@ export async function unitBalances(
       id: r.id as string,
       block: r.block as string,
       no: r.no as string,
-      arsaPayi: toNumber(r.arsaPayi),
+      arsaPayi: toCents(r.arsaPayi),
       ownerId: r.ownerId as string | null,
       ownerName: r.ownerName as string | null,
       ownerEmail: r.ownerEmail as string | null,
@@ -442,7 +432,7 @@ export async function yearEndSettlement(siteId: string, year: number) {
   // Mahsuplaşma da aidatın dayandığı ölçüye, arsa payına göre bölünür.
   const shares = distribute(
     Math.abs(differenceCents),
-    units.map((u) => Math.round(toNumber(u.arsaPayi) * 10_000)),
+    units.map((u) => Math.round(toCents(u.arsaPayi) * 10_000)),
   );
 
   const [applied] = await sql`
@@ -456,11 +446,11 @@ export async function yearEndSettlement(siteId: string, year: number) {
     spentCents: spent,
     differenceCents,
     kind: differenceCents >= 0 ? ("refund" as const) : ("charge" as const),
-    alreadyApplied: toNumber(applied?.n) > 0,
+    alreadyApplied: toCents(applied?.n) > 0,
     units: units.map((u, i) => ({
       unitId: u.id as string,
       label: `${u.block ? `${u.block} ` : ""}${u.no}`,
-      arsaPayi: toNumber(u.arsaPayi),
+      arsaPayi: toCents(u.arsaPayi),
       amountCents: shares[i]!,
     })),
   };

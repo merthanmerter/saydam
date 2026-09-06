@@ -12,6 +12,18 @@ import { z } from "zod";
  * sunucuda yeniden doğrulanır.
  */
 
+/**
+ * Alan birlikleri.
+ *
+ * Şema, TypeScript tipi ve sunucu doğrulaması aynı satırdan türer; önce üç
+ * ayrı yerde elle yazılıyorlardı ve birbirinden ayrışmaları an meselesiydi.
+ */
+export const payerEnum = z.enum(["malik", "kiraci"]);
+export const shareMethodEnum = z.enum(["esit", "arsa_payi"]);
+
+export type Payer = z.infer<typeof payerEnum>;
+export type ShareMethod = z.infer<typeof shareMethodEnum>;
+
 export const emailField = z
   .string()
   .trim()
@@ -121,7 +133,7 @@ export const cardFeeSchema = z.object({
 export const duesRulesSchema = z.object({
   dueDay: z.string(),
   lateFeePct: percentField(100, "Gecikme tazminatı 0 ile 100 arasında olmalı"),
-  defaultShareMethod: z.enum(["esit", "arsa_payi"]),
+  defaultShareMethod: shareMethodEnum,
   debtVisibility: z.enum(["yonetim", "herkes"]),
   accrualDay: z.string(),
 });
@@ -154,8 +166,8 @@ export const expenseSchema = z.object({
   incurredOn: z.string().min(1, "Fatura tarihi gerekli"),
   period: z.number().int(),
   startPeriod: z.number().int(),
-  shareMethod: z.enum(["esit", "arsa_payi"]),
-  payer: z.enum(["malik", "kiraci"]),
+  shareMethod: shareMethodEnum,
+  payer: payerEnum,
   installments: z.string().refine((v) => {
     const n = Number(v);
     return Number.isInteger(n) && n >= 1 && n <= 120;

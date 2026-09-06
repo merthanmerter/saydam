@@ -17,13 +17,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { post, useAction, usePaged } from "@/lib/api";
 import { date } from "@/lib/format";
 import { residentSchema } from "@/lib/schemas";
@@ -245,19 +238,13 @@ function AddDialog({ onInvite }: { onInvite: (invite: InviteResult) => void }) {
             </form.AppField>
             <form.AppField name="role">
               {(f) => (
-                <f.ChoiceField label="Rol">
-                  {(value, onChange) => (
-                    <Select value={value} onValueChange={onChange}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="resident">Site sakini</SelectItem>
-                        <SelectItem value="admin">Site yönetimi</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                </f.ChoiceField>
+                <f.SelectField
+                  label="Rol"
+                  options={[
+                    { value: "resident", label: "Site sakini" },
+                    { value: "admin", label: "Site yönetimi" },
+                  ]}
+                />
               )}
             </form.AppField>
           </div>

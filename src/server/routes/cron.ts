@@ -1,8 +1,8 @@
+import { currentPeriod, periodLabel } from "../../lib/period.ts";
 import { runDues } from "../accounting.ts";
 import { sql } from "../db.ts";
 import { env } from "../env.ts";
 import { json, type Router, unauthorized } from "../http.ts";
-import { currentPeriod, periodLabel } from "../period.ts";
 
 /**
  * Zamanlanmış işler. Vercel Cron her çağrıda `Authorization: Bearer $CRON_SECRET`

@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { toCents } from "../src/lib/format.ts";
+import { addMonths, isValidPeriod, periodLabel, periodOf } from "../src/lib/period.ts";
 import {
   distribute,
   installmentPlan,
-  parseAmountToCents,
   payerFor,
   shareBy,
   splitEvenly,
   withSurcharge,
 } from "../src/server/money.ts";
-import { addMonths, isValidPeriod, periodLabel, periodOf } from "../src/server/period.ts";
 
 describe("dağıtım", () => {
   test("parçaların toplamı her zaman bölünen tutara eşittir", () => {
@@ -86,14 +86,15 @@ describe("dönem", () => {
 
 describe("tutar ayrıştırma", () => {
   test("Türkçe ve nokta biçimini kabul eder", () => {
-    expect(parseAmountToCents("1.234,56")).toBe(123_456);
-    expect(parseAmountToCents("1234.56")).toBe(123_456);
-    expect(parseAmountToCents("1234")).toBe(123_400);
-    expect(parseAmountToCents(12.5)).toBe(1250);
+    expect(toCents("1.234,56")).toBe(123_456);
+    expect(toCents("1234.56")).toBe(123_456);
+    expect(toCents("1234")).toBe(123_400);
+    expect(toCents(" 1.234,56 ₺ ")).toBe(123_456);
   });
 
-  test("geçersiz girdide hata verir", () => {
-    expect(() => parseAmountToCents("abc")).toThrow();
+  test("geçersiz girdide NaN döner", () => {
+    expect(toCents("abc")).toBeNaN();
+    expect(toCents("")).toBeNaN();
   });
 });
 

@@ -1,3 +1,4 @@
+import type { SubscriptionState } from "../lib/types.ts";
 import { toCents } from "./db.ts";
 import { env, PLAN_PRICES } from "./env.ts";
 
@@ -11,16 +12,7 @@ type SubscriptionRow = {
   currentPeriodEnd: string | Date | null;
 };
 
-export type SubscriptionState = {
-  /** Bulut sürümü mü? false ise abonelik hiç aranmaz. */
-  required: boolean;
-  status: "trialing" | "active" | "grace" | "expired" | "none";
-  validUntil: string | null;
-  /** Sürenin bitmesine kalan gün (negatifse geçmiş). */
-  daysLeft: number;
-  /** true → site yönetiminin yazma işlemleri kilitli. */
-  locked: boolean;
-};
+export type { SubscriptionState } from "../lib/types.ts";
 
 const startOfDay = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();

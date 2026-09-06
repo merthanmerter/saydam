@@ -2,8 +2,21 @@ import { useNavigate } from "@tanstack/react-router";
 import { CalendarSync, FileText, Layers, Plus, Receipt } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import type { z } from "zod";
-import { DialogActions, EmptyState, Field, Money, PageHeader } from "@/app/components/bits";
-import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
+import {
+  DialogActions,
+  EmptyState,
+  Field,
+  Money,
+  PageHeader,
+  ShareMethodSelect,
+  shareMethodHint,
+} from "@/app/components/bits";
+import {
+  actionsColumn,
+  type Column,
+  DataTable,
+  moneyColumn,
+} from "@/app/components/data-table";
 import { Form, useAppForm, validate } from "@/app/components/form";
 import { FileUpload, PeriodPicker, type UploadedFile } from "@/app/components/inputs";
 import { RowActions } from "@/app/components/row-actions";
@@ -189,12 +202,7 @@ const expenseColumns = (
       </Badge>
     ),
   },
-  {
-    accessorKey: "amountCents",
-    header: "Tutar",
-    meta: { align: "right" },
-    cell: ({ row }) => <Money cents={row.original.amountCents} className="font-medium" />,
-  },
+  moneyColumn<Expense>("amountCents", "Tutar"),
   {
     id: "allocation",
     header: "Aidata yansıma",
@@ -305,12 +313,7 @@ const recurringColumns = (isAdmin: boolean): Column<Recurring>[] => [
       </div>
     ),
   },
-  {
-    accessorKey: "amountCents",
-    header: "Aylık tutar",
-    meta: { align: "right" },
-    cell: ({ row }) => <Money cents={row.original.amountCents} className="font-medium" />,
-  },
+  moneyColumn<Recurring>("amountCents", "Aylık tutar"),
   {
     id: "validity",
     header: "Geçerlilik",
@@ -743,21 +746,9 @@ function ShareMethodField({
   value: ShareMethod;
   onChange: (method: ShareMethod) => void;
 }) {
-  const selected = SHARE_METHODS.find((m) => m.id === value);
   return (
-    <Field label="Paylaşım yöntemi" hint={selected?.hint}>
-      <Select value={value} onValueChange={(next) => onChange(next as ShareMethod)}>
-        <SelectTrigger className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {SHARE_METHODS.map((method) => (
-            <SelectItem key={method.id} value={method.id}>
-              {method.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <Field label="Paylaşım yöntemi" hint={shareMethodHint(value)}>
+      <ShareMethodSelect value={value} onChange={onChange} />
     </Field>
   );
 }

@@ -1,4 +1,5 @@
-import { addMonths, type Period } from "./period.ts";
+import { addMonths, type Period } from "../lib/period.ts";
+import type { Payer, ShareMethod } from "../lib/schemas.ts";
 
 /**
  * Para hesapları. Tüm tutarlar kuruş (integer). Bölme yapılan her yerde
@@ -45,15 +46,13 @@ export const withSurcharge = (amount: number, surchargePct: number): number =>
  * Yasa "aralarında başka türlü anlaşma olmadıkça" dediği için yöntem her
  * kalemde ayrı ayrı seçilebilir. m² hukuken bir paylaşım ölçüsü değildir.
  */
-export type ShareMethod = "esit" | "arsa_payi";
-
 /**
  * Daire içinde kimin yükümlü olduğu. Site yönetimine karşı asıl sorumlu her
  * zaman maliktir (KMK m.20); kiracı kira bedeli kadar müteselsil sorumludur
  * (m.22). Bu ayrım malik ile kiracı arasındaki paylaşımı gösterir: kullanıma
  * bağlı yan giderler kira sözleşmesi gereği kiracıya aittir (TBK m.303).
  */
-export type Payer = "malik" | "kiraci";
+export type { Payer, ShareMethod } from "../lib/schemas.ts";
 
 /**
  * Bir kalemin payı fiilen kime yazılır. Daire kirada değilse kiracıya
@@ -77,19 +76,6 @@ function weightsFor(units: ShareUnit[], method: ShareMethod): number[] {
 /** Bir gider kalemini seçilen yönteme göre dairelere böler. */
 export const shareBy = (total: number, units: ShareUnit[], method: ShareMethod): number[] =>
   distribute(total, weightsFor(units, method));
-
-/**
- * TL metnini kuruşa çevirir. Virgül varsa Türkçe biçim kabul edilir
- * ("1.234,56"), yoksa nokta ondalık ayracıdır ("1234.56").
- */
-export function parseAmountToCents(input: string | number): number {
-  if (typeof input === "number") return Math.round(input * 100);
-  const raw = input.trim().replace(/[\s₺]/g, "");
-  const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
-  const value = Number(normalized);
-  if (!Number.isFinite(value)) throw new Error(`Geçersiz tutar: ${input}`);
-  return Math.round(value * 100);
-}
 
 /** Olağanüstü bir masrafın taksit planı: işletme payı eklenir, aylara bölünür. */
 export function installmentPlan(

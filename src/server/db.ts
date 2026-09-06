@@ -15,10 +15,11 @@ export const sql = new SQL({
 /** Sorgu sonucu satırı. Bun SQL dinamik döner; sınır burada çizilir. */
 export type Row = Record<string, any>;
 
-/** Postgres bigint/numeric sürücüden string gelebilir; tek yerden normalize et. */
+/**
+ * Postgres bigint/numeric sürücüden string gelebilir; tek yerden normalize
+ * edilir. Kuruş da adet de aynı dönüşümden geçer.
+ */
 export const toCents = (value: unknown): number => {
   if (value == null) return 0;
   return typeof value === "number" ? value : Number(value);
 };
-
-export const toNumber = toCents;

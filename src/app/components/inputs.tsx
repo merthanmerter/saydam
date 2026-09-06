@@ -1,3 +1,4 @@
+import { upload } from "@vercel/blob/client";
 import { FileUp, Loader2, Paperclip, X } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -11,9 +12,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { periodLabel } from "@/lib/format";
-import { uploadFile } from "@/lib/upload";
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
+
+/** Dosyayı doğrudan Blob deposuna yükler; sunucu yalnızca jeton üretir. */
+export async function uploadFile(siteId: string, folder: string, file: File) {
+  const safeName = file.name.replace(/[^\w.-]+/g, "_").slice(-80);
+  const blob = await upload(`sites/${siteId}/${folder}/${safeName}`, file, {
+    access: "public",
+    handleUploadUrl: "/api/blob/upload",
+  });
+  return { url: blob.url, name: file.name, size: file.size };
+}
 
 /** Dönem seçici: YYYYMM tamsayısı üretir. */
 export function PeriodPicker({

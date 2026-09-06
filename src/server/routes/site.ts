@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { shareMethodEnum } from "../../lib/schemas.ts";
 import { unitsSummary } from "../accounting.ts";
 import type { Auth } from "../auth.ts";
-import { type Row, sql, toNumber } from "../db.ts";
+import { type Row, sql, toCents } from "../db.ts";
 import { env } from "../env.ts";
 import {
   badRequest,
@@ -67,7 +68,7 @@ export function siteRoutes(auth: Router<Auth>, admin: Router<Auth>) {
             : null,
         providers: PROVIDERS,
         /** Kartla ödemede sakine yansıtılan komisyon farkı (%). */
-        feePct: toNumber(cardFeePct),
+        feePct: toCents(cardFeePct),
       },
     });
   });
@@ -113,7 +114,7 @@ export function siteRoutes(auth: Router<Auth>, admin: Router<Auth>) {
         /** KMK m.20/c varsayılanı aylık %5. */
         lateFeePct: z.number().min(0).max(100),
         /** Yönetim planı KMK m.20'den farklı bir yöntem öngörüyorsa. */
-        defaultShareMethod: z.enum(["esit", "arsa_payi"]),
+        defaultShareMethod: shareMethodEnum,
         /** Daire bazlı borç listesini kimler görebilir (KVKK). */
         debtVisibility: z.enum(["yonetim", "herkes"]),
         /** Tahakkukun kendiliğinden çalıştığı gün; null ise elle hesaplanır. */
@@ -241,7 +242,7 @@ export function siteRoutes(auth: Router<Auth>, admin: Router<Auth>) {
        limit ${pg.limit} offset ${pg.offset}
     `;
     return json({
-      ...paged(units, pg, (u: Row) => ({ ...u, arsaPayi: toNumber(u.arsaPayi) })),
+      ...paged(units, pg, (u: Row) => ({ ...u, arsaPayi: toCents(u.arsaPayi) })),
       summary: await unitsSummary(ctx.auth.siteId),
     });
   });
@@ -416,7 +417,7 @@ export function siteRoutes(auth: Router<Auth>, admin: Router<Auth>) {
       select role from memberships where id = ${ctx.params.id!} and site_id = ${ctx.auth.siteId}
     `;
     if (!target) throw notFound("Sakin bulunamadı");
-    if (target.role === "admin" && toNumber(admins?.n) <= 1) {
+    if (target.role === "admin" && toCents(admins?.n) <= 1) {
       throw conflict("Sitede en az bir yönetici kalmalı");
     }
     await sql.begin(async (tx) => {

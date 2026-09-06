@@ -5,6 +5,7 @@ import {
   useTable,
 } from "@tanstack/react-table";
 import type { ReactNode } from "react";
+import { Money } from "@/app/components/bits";
 import { Pager } from "@/app/components/pager";
 import { Card } from "@/components/ui/card";
 import {
@@ -15,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { number } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -38,6 +40,48 @@ export const features = tableFeatures({
 });
 
 export type Column<T extends RowData> = ColumnDef<typeof features, T>;
+
+/**
+ * Daire sütunu. Blok ve kapı numarası üç ayrı listede aynı biçimde
+ * gösteriliyor; tek yerde durunca biri değişince öbürleri geride kalmıyor.
+ */
+export const unitColumn = <T extends RowData & { block: string | null; no: string }>(
+  header = "Daire",
+): Column<T> => ({
+  id: "unit",
+  header,
+  cell: ({ row }) => (
+    <span className="font-medium">
+      {row.original.block && `${row.original.block} `}
+      {row.original.no}
+    </span>
+  ),
+});
+
+/** Arsa payı sütunu: sayısal, sağa yaslı, ikincil renk. */
+export const shareColumn = <T extends RowData & { arsaPayi: number }>(): Column<T> => ({
+  accessorKey: "arsaPayi",
+  header: "Arsa payı",
+  meta: { align: "right" },
+  cell: ({ row }) => (
+    <span className="tabular text-muted-foreground text-sm">
+      {number(row.original.arsaPayi)}
+    </span>
+  ),
+});
+
+/** Tutar sütunu: sağa yaslı, kalın, kuruş biçimli. */
+export const moneyColumn = <T extends RowData>(
+  accessorKey: string & keyof T,
+  header: string,
+): Column<T> => ({
+  accessorKey,
+  header,
+  meta: { align: "right" },
+  cell: ({ row }) => (
+    <Money cents={row.original[accessorKey] as number} className="font-medium" />
+  ),
+});
 
 /** Satır eylemleri sütunu: başlığı ekran okuyucuya, genişliği içeriğe göre. */
 export const actionsColumn = <T extends RowData>(cell: Column<T>["cell"]): Column<T> => ({

@@ -2,7 +2,12 @@ import { useNavigate } from "@tanstack/react-router";
 import { Banknote, Calculator, CircleAlert } from "lucide-react";
 import { useMemo, useTransition } from "react";
 import { EmptyState, Money, PageHeader, Stat } from "@/app/components/bits";
-import { type Column, DataTable } from "@/app/components/data-table";
+import {
+  type Column,
+  DataTable,
+  moneyColumn,
+  unitColumn,
+} from "@/app/components/data-table";
 import { PeriodPicker } from "@/app/components/inputs";
 import { duesRoute } from "@/app/router";
 import { useSession } from "@/app/session";
@@ -194,26 +199,12 @@ const lineColumns: Column<BudgetLine>[] = [
       </span>
     ),
   },
-  {
-    accessorKey: "amountCents",
-    header: "Tutar",
-    meta: { align: "right" },
-    cell: ({ row }) => <Money cents={row.original.amountCents} className="font-medium" />,
-  },
+  moneyColumn<BudgetLine>("amountCents", "Tutar"),
 ];
 
 /** Sakin yalnızca kendi dairelerini gördüğü için "Sakin" sütunu ona kapalı. */
 const duesColumns = (isAdmin: boolean): Column<Due>[] => [
-  {
-    id: "unit",
-    header: "Daire",
-    cell: ({ row }) => (
-      <span className="font-medium">
-        {row.original.block && `${row.original.block} `}
-        {row.original.no}
-      </span>
-    ),
-  },
+  unitColumn<Due>(),
   ...(isAdmin
     ? [
         {

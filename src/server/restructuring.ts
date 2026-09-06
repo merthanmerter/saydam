@@ -1,4 +1,5 @@
-import { type Row, sql, toCents, toNumber } from "./db.ts";
+import type { Restructuring } from "../lib/types.ts";
+import { type Row, sql, toCents } from "./db.ts";
 import { badRequest, conflict, notFound } from "./http.ts";
 import { restructurePlan } from "./money.ts";
 
@@ -13,24 +14,7 @@ import { restructurePlan } from "./money.ts";
  * kalmaz, borçlu hem taksite bağlanır hem eski vadeden ceza yemeye devam eder.
  */
 
-export type Installment = { no: number; dueDate: string; amountCents: number };
-
-export type Restructuring = {
-  id: string;
-  unitId: string;
-  block: string;
-  no: string;
-  principalCents: number;
-  interestPct: number;
-  interestCents: number;
-  totalCents: number;
-  installments: number;
-  coversThrough: string;
-  status: "active" | "completed" | "canceled";
-  note: string | null;
-  createdAt: string;
-  rows: Installment[];
-};
+export type { Installment, Restructuring } from "../lib/types.ts";
 
 const mapRow = (r: Row): Restructuring => ({
   id: r.id as string,
@@ -38,17 +22,17 @@ const mapRow = (r: Row): Restructuring => ({
   block: (r.block ?? "") as string,
   no: (r.no ?? "") as string,
   principalCents: toCents(r.principalCents),
-  interestPct: toNumber(r.interestPct),
+  interestPct: toCents(r.interestPct),
   interestCents: toCents(r.interestCents),
   totalCents: toCents(r.totalCents),
-  installments: toNumber(r.installments),
+  installments: toCents(r.installments),
   coversThrough: String(r.coversThrough).slice(0, 10),
   status: r.status as Restructuring["status"],
   note: (r.note ?? null) as string | null,
   createdAt: String(r.createdAt),
   rows: (typeof r.rows === "string" ? JSON.parse(r.rows) : (r.rows ?? [])).map(
     (i: Row) => ({
-      no: toNumber(i.no),
+      no: toCents(i.no),
       dueDate: String(i.dueDate).slice(0, 10),
       amountCents: toCents(i.amountCents),
     }),

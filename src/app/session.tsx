@@ -2,29 +2,10 @@ import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, type ReactNode, use, useCallback, useEffect } from "react";
 import { rememberRole } from "@/app/portal/nav";
 import { api } from "@/lib/api";
-import { type ViewMode, view } from "@/lib/view";
+import { type ViewMode, view } from "@/lib/store";
+import type { Member } from "@/lib/types";
 
-type Me = {
-  membershipId: string;
-  siteId: string;
-  siteName: string;
-  siteSlug: string;
-  userId: string;
-  email: string;
-  fullName: string;
-  role: "admin" | "resident";
-  /** Etkin görünüm modu (sunucunun onayladığı hâli). */
-  view: "admin" | "resident";
-  status: "active" | "removed";
-  unitCount: number;
-  subscription: {
-    required: boolean;
-    status: "trialing" | "active" | "grace" | "expired" | "none";
-    validUntil: string | null;
-    daysLeft: number;
-    locked: boolean;
-  };
-};
+type Me = Member;
 
 /**
  * Oturum sorgusu.
