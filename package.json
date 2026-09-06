@@ -27,7 +27,7 @@
     "db:check": "bun run scripts/check-migration.ts"
   },
   "dependencies": {
-    "@tanstack/react-charts": "^0.16.0",
+    "@tanstack/charts": "^0.16.0",
     "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-query": "^5.102.8",
     "@tanstack/react-router": "^1.170.32",
