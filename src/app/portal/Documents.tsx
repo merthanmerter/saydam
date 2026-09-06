@@ -2,6 +2,7 @@ import { FileText, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { DialogActions, EmptyState, Field, PageHeader } from "@/app/components/bits";
 import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
+import { Form, useAppForm, validate } from "@/app/components/form";
 import { FileUpload, type UploadedFile } from "@/app/components/inputs";
 import { RowActions } from "@/app/components/row-actions";
 import { useSession } from "@/app/session";
@@ -15,7 +16,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { del, post, useAction, usePaged } from "@/lib/api";
 import { date } from "@/lib/format";
+import { documentSchema } from "@/lib/schemas";
 import type { Doc } from "@/lib/types";
 
 const CATEGORIES = {
@@ -135,13 +136,11 @@ function DocActions({ doc, isAdmin }: { doc: Doc; isAdmin: boolean }) {
 function UploadDialog() {
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<UploadedFile | null>(null);
-  const [form, setForm] = useState({ title: "", category: "yonetmelik" });
 
   const create = useAction(
-    () =>
+    (value: { title: string; category: string }) =>
       post("/documents", {
-        title: form.title || file?.name,
-        category: form.category,
+        ...value,
         fileUrl: file?.url,
         fileName: file?.name,
         sizeBytes: file?.size ?? 0,
@@ -152,10 +151,16 @@ function UploadDialog() {
       onDone: () => {
         setOpen(false);
         setFile(null);
-        setForm({ ...form, title: "" });
+        form.reset();
       },
     },
   );
+
+  const form = useAppForm({
+    defaultValues: { title: "", category: "yonetmelik" },
+    ...validate(documentSchema),
+    onSubmit: ({ value }) => create.mutateAsync(value),
+  });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -169,37 +174,30 @@ function UploadDialog() {
           <DialogTitle>Doküman yükle</DialogTitle>
           <DialogDescription>PDF, görsel veya Office belgesi.</DialogDescription>
         </DialogHeader>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (file) create.mutate(undefined);
-          }}
-        >
-          <Field label="Başlık">
-            <Input
-              required
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-            />
-          </Field>
-          <Field label="Kategori">
-            <Select
-              value={form.category}
-              onValueChange={(category) => setForm({ ...form, category })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(CATEGORIES).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+        <Form form={form} className="grid gap-4">
+          <form.AppField name="title">
+            {(f) => <f.TextField label="Başlık" />}
+          </form.AppField>
+          <form.AppField name="category">
+            {(f) => (
+              <f.ChoiceField label="Kategori">
+                {(value, onChange) => (
+                  <Select value={value} onValueChange={onChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(CATEGORIES).map(([id, label]) => (
+                        <SelectItem key={id} value={id}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </f.ChoiceField>
+            )}
+          </form.AppField>
           <Field label="Dosya">
             <FileUpload
               folder="dokumanlar"
@@ -209,11 +207,11 @@ function UploadDialog() {
             />
           </Field>
           <DialogActions>
-            <Button type="submit" disabled={create.isPending || !file}>
-              Kaydet
-            </Button>
+            <form.AppForm>
+              <form.Submit disabled={!file}>Kaydet</form.Submit>
+            </form.AppForm>
           </DialogActions>
-        </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

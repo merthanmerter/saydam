@@ -41,3 +41,38 @@ export const setPasswordSchema = z
     message: "Şifreler eşleşmiyor",
     path: ["repeat"],
   });
+
+export const documentSchema = z.object({
+  title: z.string().trim().min(2, "Başlık en az 2 karakter").max(200),
+  category: z.enum(["yonetmelik", "toplanti", "sozlesme", "proje", "diger"]),
+});
+
+export const postSchema = z.object({
+  title: z.string().trim().min(3, "Başlık en az 3 karakter").max(200),
+  body: z.string().trim().min(3, "Birkaç kelime yazın").max(5000),
+  announcement: z.boolean(),
+  pinned: z.boolean(),
+});
+
+export const residentSchema = z.object({
+  fullName: z.string().trim().min(2, "Ad soyad en az 2 karakter").max(120),
+  email: emailField,
+  phone: z.string().trim().max(30),
+  role: z.enum(["resident", "admin"]),
+});
+
+/** Form alanları metin tutar; sayıya çevirme ve doğrulama burada. */
+export const unitSchema = z.object({
+  block: z.string().trim().max(20),
+  no: z.string().trim().min(1, "Kapı numarası gerekli").max(20),
+  floor: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || Number.isInteger(Number(v)), "Kat bir tam sayı olmalı"),
+  arsaPayi: z
+    .string()
+    .trim()
+    .refine((v) => Number(v.replace(",", ".")) > 0, "Arsa payı sıfırdan büyük olmalı"),
+  ownerMembershipId: z.string(),
+  tenantMembershipId: z.string(),
+});

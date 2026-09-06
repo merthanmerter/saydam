@@ -1,8 +1,10 @@
 import { Copy, UserPlus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { DialogActions, EmptyState, Field, PageHeader } from "@/app/components/bits";
+import type { z } from "zod";
+import { DialogActions, EmptyState, PageHeader } from "@/app/components/bits";
 import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
+import { Form, useAppForm, validate } from "@/app/components/form";
 import { RowActions } from "@/app/components/row-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { post, useAction, usePaged } from "@/lib/api";
 import { date } from "@/lib/format";
+import { residentSchema } from "@/lib/schemas";
 import type { Resident } from "@/lib/types";
 
 type InviteResult = { link: string; delivered: boolean; reason?: string };
@@ -190,31 +193,29 @@ function ResidentActions({
 
 function AddDialog({ onInvite }: { onInvite: (invite: InviteResult) => void }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    fullName: "",
-    email: "",
-    phone: "",
-    role: "resident" as "resident" | "admin",
-  });
 
-  const add = useAction<undefined, { invite: InviteResult }>(
-    () =>
-      post("/residents", {
-        fullName: form.fullName,
-        email: form.email,
-        phone: form.phone || null,
-        role: form.role,
-        unitIds: [],
-      }),
+  const add = useAction<z.infer<typeof residentSchema>, { invite: InviteResult }>(
+    (value) => post("/residents", { ...value, phone: value.phone || null, unitIds: [] }),
     {
       invalidate: ["/residents"],
       onDone: (result) => {
         setOpen(false);
-        setForm({ ...form, fullName: "", email: "", phone: "" });
+        form.reset();
         onInvite(result.invite);
       },
     },
   );
+
+  const form = useAppForm({
+    defaultValues: {
+      fullName: "",
+      email: "",
+      phone: "",
+      role: "resident" as "resident" | "admin",
+    },
+    ...validate(residentSchema),
+    onSubmit: ({ value }) => add.mutateAsync(value),
+  });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -231,58 +232,41 @@ function AddDialog({ onInvite }: { onInvite: (invite: InviteResult) => void }) {
             sayfasından yapılır.
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            add.mutate(undefined);
-          }}
-        >
-          <Field label="Ad soyad">
-            <Input
-              required
-              value={form.fullName}
-              onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-            />
-          </Field>
-          <Field label="E-posta">
-            <Input
-              type="email"
-              required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-          </Field>
+        <Form form={form} className="grid gap-4">
+          <form.AppField name="fullName">
+            {(f) => <f.TextField label="Ad soyad" />}
+          </form.AppField>
+          <form.AppField name="email">
+            {(f) => <f.TextField label="E-posta" type="email" />}
+          </form.AppField>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Telefon">
-              <Input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              />
-            </Field>
-            <Field label="Rol">
-              <Select
-                value={form.role}
-                onValueChange={(role) =>
-                  setForm({ ...form, role: role as "resident" | "admin" })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="resident">Site sakini</SelectItem>
-                  <SelectItem value="admin">Site yönetimi</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
+            <form.AppField name="phone">
+              {(f) => <f.TextField label="Telefon" />}
+            </form.AppField>
+            <form.AppField name="role">
+              {(f) => (
+                <f.ChoiceField label="Rol">
+                  {(value, onChange) => (
+                    <Select value={value} onValueChange={onChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="resident">Site sakini</SelectItem>
+                        <SelectItem value="admin">Site yönetimi</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </f.ChoiceField>
+              )}
+            </form.AppField>
           </div>
           <DialogActions>
-            <Button type="submit" disabled={add.isPending}>
-              Ekle ve davet gönder
-            </Button>
+            <form.AppForm>
+              <form.Submit>Ekle ve davet gönder</form.Submit>
+            </form.AppForm>
           </DialogActions>
-        </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

@@ -1,7 +1,9 @@
 import { DoorOpen, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
-import { DialogActions, EmptyState, Field, PageHeader, Stat } from "@/app/components/bits";
+import type { z } from "zod";
+import { DialogActions, EmptyState, PageHeader, Stat } from "@/app/components/bits";
 import { actionsColumn, type Column, DataTable } from "@/app/components/data-table";
+import { Form, useAppForm, validate } from "@/app/components/form";
 import { RowActions } from "@/app/components/row-actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +14,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -30,6 +31,7 @@ import {
   useSuspenseApi,
 } from "@/lib/api";
 import { number } from "@/lib/format";
+import { unitSchema } from "@/lib/schemas";
 import type { Resident, Unit, UnitsSummary } from "@/lib/types";
 
 export default function Units() {
@@ -209,31 +211,34 @@ function UnitDialog({
     };
   };
 
-  const [form, setForm] = useState(defaults);
   const [rented, setRented] = useState(unit?.tenantMembershipId != null);
-  const set = (key: keyof ReturnType<typeof defaults>) => (value: string) =>
-    setForm((previous) => ({ ...previous, [key]: value }));
-
-  const arsaPayi = Number(form.arsaPayi.replace(",", "."));
-  const valid = form.no.trim().length > 0 && arsaPayi > 0;
-
-  const payload = () => ({
-    block: form.block.trim(),
-    no: form.no.trim(),
-    floor: form.floor.trim() === "" ? null : Number(form.floor),
-    arsaPayi,
-    ownerMembershipId: form.ownerMembershipId === "none" ? null : form.ownerMembershipId,
-    tenantMembershipId: form.tenantMembershipId === "none" ? null : form.tenantMembershipId,
-  });
 
   const save = useAction(
-    () => (unit ? patch(`/units/${unit.id}`, payload()) : post("/units", payload())),
+    (value: z.infer<typeof unitSchema>) => {
+      const payload = {
+        block: value.block,
+        no: value.no,
+        floor: value.floor === "" ? null : Number(value.floor),
+        arsaPayi: Number(value.arsaPayi.replace(",", ".")),
+        ownerMembershipId:
+          value.ownerMembershipId === "none" ? null : value.ownerMembershipId,
+        tenantMembershipId:
+          value.tenantMembershipId === "none" ? null : value.tenantMembershipId,
+      };
+      return unit ? patch(`/units/${unit.id}`, payload) : post("/units", payload);
+    },
     {
       invalidate: ["/units", "/site", "/reports"],
       success: unit ? "Daire güncellendi" : "Daire eklendi",
       onDone: () => close(),
     },
   );
+
+  const form = useAppForm({
+    defaultValues: defaults(),
+    ...validate(unitSchema),
+    onSubmit: ({ value }) => save.mutateAsync(value),
+  });
 
   const close = () => {
     setOpen(false);
@@ -246,7 +251,7 @@ function UnitDialog({
       onOpenChange={(next) => {
         if (!next) return close();
         setOpen(true);
-        setForm(defaults);
+        form.reset(defaults());
         setRented(unit?.tenantMembershipId != null);
       }}
     >
@@ -266,49 +271,45 @@ function UnitDialog({
               : "Blok ve kapı numarası son daireden devam eder."}
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (valid) save.mutate(undefined);
-          }}
-        >
+        <Form form={form} className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Blok">
-              <Input
-                value={form.block}
-                onChange={(e) => set("block")(e.target.value)}
-                placeholder="A"
-              />
-            </Field>
-            <Field label="Kapı no">
-              <Input required value={form.no} onChange={(e) => set("no")(e.target.value)} />
-            </Field>
-            <Field label="Kat">
-              <Input
-                inputMode="numeric"
-                value={form.floor}
-                onChange={(e) => set("floor")(e.target.value)}
-              />
-            </Field>
+            <form.AppField name="block">
+              {(f) => <f.TextField label="Blok" placeholder="A" />}
+            </form.AppField>
+            <form.AppField name="no">
+              {(f) => <f.TextField label="Kapı no" />}
+            </form.AppField>
+            <form.AppField name="floor">
+              {(f) => <f.TextField label="Kat" inputMode="numeric" />}
+            </form.AppField>
           </div>
 
-          <Field label="Arsa payı" hint="Tapudaki pay. Ortak gider bu orana göre bölünür.">
-            <Input
-              required
-              inputMode="decimal"
-              value={form.arsaPayi}
-              onChange={(e) => set("arsaPayi")(e.target.value)}
-            />
-          </Field>
+          <form.AppField name="arsaPayi">
+            {(f) => (
+              <f.TextField
+                label="Arsa payı"
+                hint="Tapudaki pay. Ortak gider bu orana göre bölünür."
+                inputMode="decimal"
+              />
+            )}
+          </form.AppField>
 
-          <Field label="Malik" hint="Ortak giderden asıl sorumlu olan kişi (KMK m.20)">
-            <PersonSelect
-              value={form.ownerMembershipId === "none" ? null : form.ownerMembershipId}
-              residents={residents}
-              onChange={(id) => set("ownerMembershipId")(id ?? "none")}
-            />
-          </Field>
+          <form.AppField name="ownerMembershipId">
+            {(f) => (
+              <f.ChoiceField
+                label="Malik"
+                hint="Ortak giderden asıl sorumlu olan kişi (KMK m.20)"
+              >
+                {(value, onChange) => (
+                  <PersonSelect
+                    value={value === "none" ? null : value}
+                    residents={residents}
+                    onChange={(id) => onChange(id ?? "none")}
+                  />
+                )}
+              </f.ChoiceField>
+            )}
+          </form.AppField>
 
           {/*
             Kiracı ayrı bir alan, çünkü hukuken ayrı bir kişi: KMK m.22 kiracıyı
@@ -320,30 +321,39 @@ function UnitDialog({
               type="checkbox"
               className="size-4 accent-[var(--primary)]"
               checked={rented}
-              onChange={(e) => {
-                setRented(e.target.checked);
-                if (!e.target.checked) set("tenantMembershipId")("none");
+              onChange={(event) => {
+                setRented(event.target.checked);
+                if (!event.target.checked) form.setFieldValue("tenantMembershipId", "none");
               }}
             />
             Daire kirada
           </label>
 
           {rented && (
-            <Field label="Kiracı" hint="Kira bedeli kadar müteselsil sorumlu (KMK m.22)">
-              <PersonSelect
-                value={form.tenantMembershipId === "none" ? null : form.tenantMembershipId}
-                residents={residents}
-                onChange={(id) => set("tenantMembershipId")(id ?? "none")}
-              />
-            </Field>
+            <form.AppField name="tenantMembershipId">
+              {(f) => (
+                <f.ChoiceField
+                  label="Kiracı"
+                  hint="Kira bedeli kadar müteselsil sorumlu (KMK m.22)"
+                >
+                  {(value, onChange) => (
+                    <PersonSelect
+                      value={value === "none" ? null : value}
+                      residents={residents}
+                      onChange={(id) => onChange(id ?? "none")}
+                    />
+                  )}
+                </f.ChoiceField>
+              )}
+            </form.AppField>
           )}
 
           <DialogActions>
-            <Button type="submit" disabled={save.isPending || !valid}>
-              {unit ? "Kaydet" : "Ekle"}
-            </Button>
+            <form.AppForm>
+              <form.Submit>{unit ? "Kaydet" : "Ekle"}</form.Submit>
+            </form.AppForm>
           </DialogActions>
-        </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

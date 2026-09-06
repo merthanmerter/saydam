@@ -1,6 +1,7 @@
 import { Megaphone, MessageCircle, MessagesSquare, Pin, Plus, Send } from "lucide-react";
 import { useState } from "react";
-import { DialogActions, EmptyState, Field, PageHeader } from "@/app/components/bits";
+import { DialogActions, EmptyState, PageHeader } from "@/app/components/bits";
+import { Form, useAppForm, validate } from "@/app/components/form";
 import { Pager } from "@/app/components/pager";
 import { RowActions } from "@/app/components/row-actions";
 import { useSession } from "@/app/session";
@@ -16,9 +17,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { del, patch, post, useAction, useApi, usePaged } from "@/lib/api";
 import { dateTime, initials } from "@/lib/format";
+import { postSchema } from "@/lib/schemas";
 import type { Comment, Post } from "@/lib/types";
 
 /**
@@ -242,26 +243,30 @@ const post_ = (postId: string, body: string) => post(`/posts/${postId}/comments`
 
 function NewPostDialog({ isAdmin }: { isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
-  const empty = { title: "", body: "", announcement: isAdmin, pinned: false };
-  const [form, setForm] = useState(empty);
 
   const create = useAction(
-    () =>
+    (value: { title: string; body: string; announcement: boolean; pinned: boolean }) =>
       post("/posts", {
-        title: form.title,
-        body: form.body,
-        kind: form.announcement ? "announcement" : "topic",
-        pinned: form.announcement && form.pinned,
+        title: value.title,
+        body: value.body,
+        kind: value.announcement ? "announcement" : "topic",
+        pinned: value.announcement && value.pinned,
       }),
     {
       invalidate: ["/posts"],
-      success: form.announcement ? "Duyuru yayınlandı" : "Konu açıldı",
+      success: "Panoya eklendi",
       onDone: () => {
         setOpen(false);
-        setForm(empty);
+        form.reset();
       },
     },
   );
+
+  const form = useAppForm({
+    defaultValues: { title: "", body: "", announcement: isAdmin, pinned: false },
+    ...validate(postSchema),
+    onSubmit: ({ value }) => create.mutateAsync(value),
+  });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -272,68 +277,67 @@ function NewPostDialog({ isAdmin }: { isAdmin: boolean }) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{form.announcement ? "Yeni duyuru" : "Yeni konu"}</DialogTitle>
+          <DialogTitle>
+            <form.Subscribe selector={(state) => state.values.announcement}>
+              {(announcement) => (announcement ? "Yeni duyuru" : "Yeni konu")}
+            </form.Subscribe>
+          </DialogTitle>
         </DialogHeader>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            create.mutate(undefined);
-          }}
-        >
-          <Field label="Başlık">
-            <Input
-              required
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-            />
-          </Field>
-          <Field label="İçerik">
-            <Textarea
-              required
-              rows={6}
-              value={form.body}
-              onChange={(e) => setForm({ ...form, body: e.target.value })}
-            />
-          </Field>
+        <Form form={form} className="grid gap-4">
+          <form.AppField name="title">
+            {(f) => <f.TextField label="Başlık" />}
+          </form.AppField>
+          <form.AppField name="body">
+            {(f) => <f.TextAreaField label="İçerik" rows={6} />}
+          </form.AppField>
           {isAdmin && (
             <div className="grid gap-2 rounded-lg border bg-muted/40 p-3">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-[var(--primary)]"
-                  checked={form.announcement}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      announcement: e.target.checked,
-                      pinned: e.target.checked && form.pinned,
-                    })
-                  }
-                />
-                Duyuru olarak yayınla
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-[var(--primary)]"
-                  disabled={!form.announcement}
-                  checked={form.pinned}
-                  onChange={(e) => setForm({ ...form, pinned: e.target.checked })}
-                />
-                <span className={form.announcement ? "" : "text-muted-foreground"}>
-                  Panonun başına sabitle
-                </span>
-              </label>
+              <form.Field name="announcement">
+                {(field) => (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-[var(--primary)]"
+                      checked={field.state.value}
+                      onChange={(event) => {
+                        field.handleChange(event.target.checked);
+                        // Sabitleme yalnızca duyuruya ait: duyuru kapanınca düşer.
+                        if (!event.target.checked) form.setFieldValue("pinned", false);
+                      }}
+                    />
+                    Duyuru olarak yayınla
+                  </label>
+                )}
+              </form.Field>
+              <form.Subscribe selector={(state) => state.values.announcement}>
+                {(announcement) => (
+                  <form.Field name="pinned">
+                    {(field) => (
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="size-4 accent-[var(--primary)]"
+                          disabled={!announcement}
+                          checked={field.state.value}
+                          onChange={(event) => field.handleChange(event.target.checked)}
+                        />
+                        <span className={announcement ? "" : "text-muted-foreground"}>
+                          Panonun başına sabitle
+                        </span>
+                      </label>
+                    )}
+                  </form.Field>
+                )}
+              </form.Subscribe>
             </div>
           )}
 
           <DialogActions>
-            <Button type="submit" disabled={create.isPending}>
-              Yayınla
-            </Button>
+            <form.AppForm>
+              <form.Submit>Yayınla</form.Submit>
+            </form.AppForm>
           </DialogActions>
-        </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
