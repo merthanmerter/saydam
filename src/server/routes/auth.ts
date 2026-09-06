@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { emailField, passwordField, registerSchema } from "../../lib/schemas.ts";
 import type { Auth } from "../auth.ts";
 import {
   clearCookie,
@@ -25,16 +26,18 @@ import {
 } from "../rateLimit.ts";
 import { planPrice, trialEnd } from "../subscription.ts";
 
-const email = z.string().trim().toLowerCase().pipe(z.email("Geçerli bir e-posta girin"));
-const password = z.string().min(8, "Şifre en az 8 karakter olmalı").max(200);
+// Form da aynı kuralları kullanıyor; tanım paylaşılan modülde.
+const email = emailField;
+const password = passwordField;
 
-const registerSchema = z.object({
-  siteName: z.string().trim().min(2).max(120),
-  city: z.string().trim().max(80).default(""),
-  address: z.string().trim().max(300).default(""),
-  adminName: z.string().trim().min(2).max(120),
-  adminEmail: email,
-  password,
+/**
+ * Formun boş bıraktığı alanları "" olarak gönderdiği kesin, ama uca doğrudan
+ * istek atan bir istemci bunları atlayabilir; sunucu tarafında varsayılan
+ * verilir. Kurallar yine paylaşılan şemadan geliyor.
+ */
+const registerBody = registerSchema.extend({
+  city: registerSchema.shape.city.default(""),
+  address: registerSchema.shape.address.default(""),
 });
 
 const slugify = (value: string) =>
@@ -75,7 +78,7 @@ export function authRoutes(pub: Router, auth: Router<Auth>) {
 
   /** Site yönetimi kendi profilini oluşturur; ilk yönetici hesabı da burada açılır. */
   pub.post("/auth/register-site", async (ctx) => {
-    const input = await body(ctx.req, registerSchema);
+    const input = await body(ctx.req, registerBody);
 
     const result = await sql.begin(async (tx) => {
       let slug = slugify(input.siteName);

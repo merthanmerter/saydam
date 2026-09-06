@@ -1,13 +1,13 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Field } from "@/app/components/bits";
+import { Form, useAppForm, validate } from "@/app/components/form";
 import { type SiteOption, SitePicker } from "@/app/components/site-picker";
 import AuthShell from "@/app/pages/AuthShell";
 import { loginRoute } from "@/app/router";
 import { useSession } from "@/app/session";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { post, useAction } from "@/lib/api";
+import { loginSchema } from "@/lib/schemas";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -16,8 +16,6 @@ export default function Login() {
   const { from } = loginRoute.useSearch();
   const { me, refetch } = useSession();
   const [site, setSite] = useState<SiteOption | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
 
   const go = useCallback(
     (replace = false) => navigate({ to: from ?? "/panel", replace }),
@@ -40,6 +38,12 @@ export default function Login() {
     },
   );
 
+  const form = useAppForm({
+    defaultValues: { email: "", password: "" },
+    ...validate(loginSchema),
+    onSubmit: ({ value }) => site && login.mutateAsync({ siteId: site.id, ...value }),
+  });
+
   return (
     <AuthShell
       title="Portala giriş"
@@ -53,44 +57,24 @@ export default function Login() {
         </>
       }
     >
-      <form
-        className="grid gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (site) login.mutate({ siteId: site.id, email, password });
-        }}
-      >
+      <Form form={form} className="grid gap-4">
         <Field label="Site">
           <SitePicker value={site} onChange={setSite} />
         </Field>
-
-        <Field label="E-posta">
-          <Input
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </Field>
-
-        <Field label="Şifre">
-          <Input
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </Field>
-
-        <Button type="submit" disabled={!site || login.isPending} className="mt-1">
-          {login.isPending ? "Giriş yapılıyor…" : "Giriş yap"}
-        </Button>
-        <p className="text-center text-muted-foreground text-xs">
-          Şifrenizi bilmiyorsanız site yönetiminden sıfırlama isteyin.
-        </p>
-      </form>
+        <form.AppField name="email">
+          {(f) => <f.TextField label="E-posta" type="email" autoComplete="username" />}
+        </form.AppField>
+        <form.AppField name="password">
+          {(f) => (
+            <f.TextField label="Şifre" type="password" autoComplete="current-password" />
+          )}
+        </form.AppField>
+        <form.AppForm>
+          <form.Submit disabled={!site}>
+            {site ? "Giriş yap" : "Önce sitenizi seçin"}
+          </form.Submit>
+        </form.AppForm>
+      </Form>
     </AuthShell>
   );
 }

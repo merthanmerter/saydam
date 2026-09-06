@@ -1,33 +1,33 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { Field } from "@/app/components/bits";
+import { Form, useAppForm, validate } from "@/app/components/form";
 import AuthShell from "@/app/pages/AuthShell";
 import { useSession } from "@/app/session";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { post, useAction } from "@/lib/api";
+import { registerSchema } from "@/lib/schemas";
 
 export default function Register() {
   const navigate = useNavigate();
   const { refetch } = useSession();
-  const [form, setForm] = useState({
-    siteName: "",
-    city: "",
-    address: "",
-    adminName: "",
-    adminEmail: "",
-    password: "",
-  });
 
-  const set = (key: keyof typeof form) => (event: { target: { value: string } }) =>
-    setForm((previous) => ({ ...previous, [key]: event.target.value }));
-
-  const register = useAction(() => post("/auth/register-site", form), {
+  const register = useAction((input: unknown) => post("/auth/register-site", input), {
     success: "Siteniz oluşturuldu",
     onDone: () => {
       refetch();
       navigate({ to: "/panel" });
     },
+  });
+
+  const form = useAppForm({
+    defaultValues: {
+      siteName: "",
+      city: "",
+      address: "",
+      adminName: "",
+      adminEmail: "",
+      password: "",
+    },
+    ...validate(registerSchema),
+    onSubmit: ({ value }) => register.mutateAsync(value),
   });
 
   return (
@@ -37,60 +37,51 @@ export default function Register() {
       footer={
         <>
           Zaten hesabınız var mı?{" "}
-          <Link to="/giris" className="font-medium text-foreground hover:underline">
+          <Link
+            to="/giris"
+            search={{}}
+            className="font-medium text-foreground hover:underline"
+          >
             Giriş yapın
           </Link>
         </>
       }
     >
-      <form
-        className="grid gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          register.mutate(undefined);
-        }}
-      >
-        <Field label="Site adı">
-          <Input required value={form.siteName} onChange={set("siteName")} />
-        </Field>
-        <Field label="Şehir">
-          <Input value={form.city} onChange={set("city")} />
-        </Field>
-        <Field label="Adres">
-          <Input value={form.address} onChange={set("address")} />
-        </Field>
+      <Form form={form} className="grid gap-4">
+        <form.AppField name="siteName">
+          {(field) => <field.TextField label="Site adı" />}
+        </form.AppField>
+        <form.AppField name="city">{(f) => <f.TextField label="Şehir" />}</form.AppField>
+        <form.AppField name="address">{(f) => <f.TextField label="Adres" />}</form.AppField>
 
         <div className="mt-2 border-t pt-4">
           <p className="mb-3 font-medium text-sm">Yönetici hesabı</p>
           <div className="grid gap-4">
-            <Field label="Ad soyad">
-              <Input required value={form.adminName} onChange={set("adminName")} />
-            </Field>
-            <Field label="E-posta">
-              <Input
-                type="email"
-                required
-                value={form.adminEmail}
-                onChange={set("adminEmail")}
-              />
-            </Field>
-            <Field label="Şifre" hint="En az 8 karakter">
-              <Input
-                type="password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-                value={form.password}
-                onChange={set("password")}
-              />
-            </Field>
+            <form.AppField name="adminName">
+              {(f) => <f.TextField label="Ad soyad" />}
+            </form.AppField>
+            <form.AppField name="adminEmail">
+              {(f) => <f.TextField label="E-posta" type="email" />}
+            </form.AppField>
+            <form.AppField name="password">
+              {(f) => (
+                <f.TextField
+                  label="Şifre"
+                  hint="En az 8 karakter"
+                  type="password"
+                  autoComplete="new-password"
+                />
+              )}
+            </form.AppField>
           </div>
         </div>
 
-        <Button type="submit" disabled={register.isPending} className="mt-1">
-          {register.isPending ? "Oluşturuluyor…" : "Siteyi oluştur"}
-        </Button>
-      </form>
+        <form.AppForm>
+          <form.Submit className="mt-1">
+            {register.isPending ? "Oluşturuluyor…" : "Siteyi oluştur"}
+          </form.Submit>
+        </form.AppForm>
+      </Form>
     </AuthShell>
   );
 }

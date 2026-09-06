@@ -1,31 +1,37 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { Field } from "@/app/components/bits";
+import { Form, useAppForm, validate } from "@/app/components/form";
 import AuthShell from "@/app/pages/AuthShell";
 import { setPasswordRoute } from "@/app/router";
 import { useSession } from "@/app/session";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { post, useAction, useApi } from "@/lib/api";
+import { setPasswordSchema } from "@/lib/schemas";
 
 export default function SetPassword() {
   const { token } = setPasswordRoute.useParams();
   const navigate = useNavigate();
   const { refetch } = useSession();
-  const [password, setPassword] = useState("");
-  const [repeat, setRepeat] = useState("");
 
   const invite = useApi<{ siteName: string; email: string; fullName: string }>(
     `/auth/invite/${token}`,
   );
 
-  const submit = useAction(() => post("/auth/setup-password", { token, password }), {
-    success: "Şifreniz belirlendi",
-    onDone: () => {
-      refetch();
-      navigate({ to: "/panel" });
+  const submit = useAction(
+    (password: string) => post("/auth/setup-password", { token, password }),
+    {
+      success: "Şifreniz belirlendi",
+      onDone: () => {
+        refetch();
+        navigate({ to: "/panel" });
+      },
     },
+  );
+
+  const form = useAppForm({
+    defaultValues: { password: "", repeat: "" },
+    ...validate(setPasswordSchema),
+    onSubmit: ({ value }) => submit.mutateAsync(value.password),
   });
 
   if (invite.isPending) {
@@ -57,44 +63,35 @@ export default function SetPassword() {
     );
   }
 
-  const mismatch = repeat.length > 0 && password !== repeat;
-
   return (
     <AuthShell
       title="Şifrenizi belirleyin"
       description={`${invite.data?.siteName} · ${invite.data?.email}`}
     >
-      <form
-        className="grid gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!mismatch) submit.mutate(undefined);
-        }}
-      >
-        <Field label="Yeni şifre" hint="En az 8 karakter">
-          <Input
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </Field>
-        <Field label="Yeni şifre (tekrar)">
-          <Input
-            type="password"
-            required
-            value={repeat}
-            onChange={(e) => setRepeat(e.target.value)}
-            aria-invalid={mismatch}
-          />
-        </Field>
-        {mismatch && <p className="text-destructive text-xs">Şifreler eşleşmiyor</p>}
-        <Button type="submit" disabled={submit.isPending || mismatch}>
-          Şifreyi kaydet ve giriş yap
-        </Button>
-      </form>
+      <Form form={form} className="grid gap-4">
+        <form.AppField name="password">
+          {(f) => (
+            <f.TextField
+              label="Yeni şifre"
+              hint="En az 8 karakter"
+              type="password"
+              autoComplete="new-password"
+            />
+          )}
+        </form.AppField>
+        <form.AppField name="repeat">
+          {(f) => (
+            <f.TextField
+              label="Yeni şifre (tekrar)"
+              type="password"
+              autoComplete="new-password"
+            />
+          )}
+        </form.AppField>
+        <form.AppForm>
+          <form.Submit>Şifreyi kaydet ve giriş yap</form.Submit>
+        </form.AppForm>
+      </Form>
     </AuthShell>
   );
 }

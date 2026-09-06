@@ -104,11 +104,14 @@ export function EmptyState({
 export function Field({
   label,
   hint,
+  error,
   children,
   className,
 }: {
   label: string;
   hint?: string;
+  /** Doluysa ipucunun yerine geçer: iki satır birden gösterip alanı şişirmez. */
+  error?: string;
   children: ReactNode;
   className?: string;
 }) {
@@ -124,7 +127,11 @@ export function Field({
         {label}
       </Label>
       <FieldIdContext.Provider value={id}>{control}</FieldIdContext.Provider>
-      {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
+      {error ? (
+        <p className="text-[var(--danger)] text-xs">{error}</p>
+      ) : (
+        hint && <p className="text-muted-foreground text-xs">{hint}</p>
+      )}
     </div>
   );
 }
